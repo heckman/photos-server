@@ -2,47 +2,29 @@
 
 PORT=8363
 
-
 temp_dir="$(mktemp --directory)"
 # shellcheck disable=SC2064 # it's a trap!
 trap "rm -rf '$temp_dir'" EXIT
 response_pipe="$temp_dir/pipe"
 mkfifo "$response_pipe"
 
-search(){ search_term="$1" destination="$2"
-if test -z "$search_term"
-then
-	echo -1
-	return 1
-else
-	destination=$(realpath "$destination")
-	osascript <<EOS
-tell application "Photos"
-	set found_photos to search for "$search_term"
-	set number_found to length of found_photos
-	if number_found is not 0 then
-		set first_found to {some item of found_photos}
-		export first_found to (POSIX file "$destination")
-	end if
-		do shell script "echo " & number_found
-end tell
-EOS
-fi
+# print an id if there's a match, otherwise nothing.
+search_for_photo(){ local search_term="$1"
+	osascript -l JavaScript -e "
+	const photos=Application('Photos')
+		.search({for:'$search_term'})
+		.filter(x=>x.filename().match(/(jpeg|jpg|heic)\$/i))
+	if (photos.length){
+		photos[Math.floor(Math.random() * photos.length)].id()
+	}"
 }
 
-# size_of() { stat f'%s' "$1"; }
-#
-# dir_is_empty() { [ -z "$(ls -A "$1")" ]; }
-# search "$1" "$2"
-# dir_is_empty "$image_dir" || cp "$image_dir"/* /Users/erik/dev/photos-server/
-# exit
-# ids_of_search_results
-
-# IMAGE="$(export_search_results "$@" | head -1)"
-
-# RESP=/tmp/webresp
-# [ -p $RESP ] || mkfifo $RESP
-# shellcheck disable=SC2094
+# export photo with id to destination
+export_photo(){ local id="$1" destination="$2"
+	osascript -e 'tell application "Photos" ¬
+		to export { media item id "'"$id"'" } ¬
+		to (POSIX file "'"$destination"'")'
+}
 
 # shellcheck disable=SC2059
 log(){ if test -z "$1"; then cat - >&2; else printf "$@" >&2; fi; }
@@ -60,6 +42,7 @@ do
 	(
 		IFS= read -r request
 		search_term="$(echo "$request" | awk '{print $2}')"
+		search_term="${search_term#/}"
 		# echo "search_term: $search_term"
 			log '\n\n\n\n\n'
 			log 'request: %s\nsearch term: %s\n' "$request" "$search_term"
@@ -73,8 +56,8 @@ do
 		# shellcheck disable=SC2064 # it's a trap!
 		trap "rm -rf '$image_dir'" EXIT
 
-		num="$(search "$search_term" "$image_dir")"
-		log 'number of images found: %s\n' "$num"
+		id="$(search_for_photo "$search_term")"
+		[ -z "$id" ] || export_photo "$id" "$image_dir"
 
 		log 'image dir contains: %s\n' "$(ls "$image_dir")"
 
