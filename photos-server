@@ -1,10 +1,23 @@
 #!/bin/dash
+#
+#  photos-server
+#
+# serves photos from Photos.app
+
+# listens on a port for a search term and returns a photo from the photos app
+# if photos returns multiple photos a random one is selected
+# if there are no matches a default placeholder is returned
 
 PORT=8363
 
+# items returned by Photos.app are filtered with this regex
+image_regex='/\.(jpeg|jpg|heic)$/i' # don't match movies
+
+# allocate a temporary directory
 temp_dir="$(mktemp --directory)"
 # shellcheck disable=SC2064 # it's a trap!
 trap "rm -rf '$temp_dir'" EXIT
+# put a pipe in it
 response_pipe="$temp_dir/pipe"
 mkfifo "$response_pipe"
 
@@ -13,21 +26,25 @@ search_for_photo(){ local search_term="$1"
 	osascript -l JavaScript -e "
 	const photos=Application('Photos')
 		.search({for:'$search_term'})
-		.filter(x=>x.filename().match(/(jpeg|jpg|heic)\$/i))
+		.filter(x=>x.filename().match($image_regex))
+	for(const photo of photos){console.log(photo.id(),photo.size(),photo.filename())}
 	if (photos.length){
 		photos[Math.floor(Math.random() * photos.length)].id()
 	}"
 }
 
-# export photo with id to destination
+# export photo with a given id to specified destination
 export_photo(){ local id="$1" destination="$2"
 	osascript -e 'tell application "Photos" ¬
 		to export { media item id "'"$id"'" } ¬
 		to (POSIX file "'"$destination"'")'
 }
 
+# output to stderr
+log_to=/dev/stderr
+# log_to=/dev/null
 # shellcheck disable=SC2059
-log(){ if test -z "$1"; then cat - >&2; else printf "$@" >&2; fi; }
+log(){ if test -z "$1"; then cat - >$log_to; else printf "$@" >$log_to; fi; }
 
 # shellcheck disable=SC2094
 main()
@@ -43,53 +60,59 @@ do
 		IFS= read -r request
 		search_term="$(echo "$request" | awk '{print $2}')"
 		search_term="${search_term#/}"
-		# echo "search_term: $search_term"
 			log '\n\n\n\n\n'
 			log 'request: %s\nsearch term: %s\n' "$request" "$search_term"
-		# search_term="$(printf "${search_term//\%/\\x}\n")"
-			# log 'unescaped search term: %s\n' "$search_term"
 
-			log 'temp dir contains: %s\n' "$(ls "$temp_dir")"
-
-		# shellcheck disable=SC2030 # it's a local varirable
+		# make a new directory for each image served
+		# shellcheck disable=SC2030 # image_dir is a local variable
 		image_dir=$(mktemp --directory -p "$temp_dir" -t 'image')
-		# shellcheck disable=SC2064 # it's a trap!
+		# shellcheck disable=SC2064 # we want the dir name expanded now
 		trap "rm -rf '$image_dir'" EXIT
 
-		id="$(search_for_photo "$search_term")"
-		[ -z "$id" ] || export_photo "$id" "$image_dir"
+			log 'all matching photos (id size filename): %s\n'
+		# get id of a photo being searched for, and if found, export the photo
+		{
+			id="$(search_for_photo "$search_term")"
+			[ -z "$id" ] || export_photo "$id" "$image_dir"
+		} 2>&1 | log
 
-		log 'image dir contains: %s\n' "$(ls "$image_dir")"
+			log 'exported from photos:%s\n' "$(ls "$image_dir")"
 
+		# start the response header, and set values for use later in the header
 		if size=$(stat -f'%z' "$image_dir"/*); then
-			jpg_function=found_jpg
-			filename="$(basename "$(stat -f'%N' "$image_dir"/*)")"
 			printf '%s\n' 'HTTP/1.1 200 OK'
+			output_photo=found_photo
+			filename="$(basename "$(stat -f'%N' "$image_dir"/*)")"
 		else
-			size=$(missing_jpg_size)
-			filename="missing.jpg"
-			jpg_function=missing_jpg
 			printf '%s\n' 'HTTP/1.1 404 Not Found'
+			size=$(missing_photo_size)
+			output_photo=missing_photo
+			filename="missing.jpg"
 		fi
 
-			log 'serving file: %s\n' "$filename"
+			log 'serving photo: %s\n' "$filename"
 
+		# print the rest of the header
+		# using a series of printf statements so they are easy to comment-out
 		printf '%s\n' 'Content-Type: image/jpeg'
 		printf '%s\n' "Content-Length: $size"
+		printf '%s\n' "Content-Disposition: inline; filename=\"$filename\""
 		# printf '%s\n' 'Cache-Control: private'
 		# printf '%s\n' 'Connection: Close'
 		printf '%s\n' 'Connection: keep-alive'
 		printf '%s\n' 'Accpet-Ranges: bytes'
-		printf '%s\n' "Content-Disposition: inline; filename=\"$filename\""
 		printf '\n'
-		$jpg_function
+
+		# write the contents of the image to the pipe
+		$output_photo
+
 	) >"$response_pipe"
 done
 }
 
-found_jpg(){ cat "$image_dir"/*; }
-missing_jpg_size(){ echo 11589;}
-missing_jpg(){
+found_photo(){ cat "$image_dir"/*; }
+missing_photo_size(){ echo 11589;}
+missing_photo(){
 	echo "begin-base64 644 missing.jpg
 /9j/4QDoRXhpZgAATU0AKgAAAAgABgESAAMAAAABAAEAAAEaAAUAAAABAAAAVgEbAAUAAAABAAAA
 XgEoAAMAAAABAAIAAAITAAMAAAABAAEAAIdpAAQAAAABAAAAZgAAAAAAAACQAAAAAQAAAJAAAAAB
