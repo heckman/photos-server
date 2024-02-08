@@ -22,22 +22,16 @@ response_pipe="$temp_dir/pipe"
 mkfifo "$response_pipe"
 
 # print an id if there's a match, otherwise nothing.
-search_for_photo(){ local search_term="$1"
+export_matching_photo(){ local search_term="$1" destination="$2"
 	osascript -l JavaScript -e "
-	const photos=Application('Photos')
+	const destination=Path('$destination')
+	const matchingPhotos=Application('Photos')
 		.search({for:'$search_term'})
 		.filter(x=>x.filename().match($image_regex))
-	for(const photo of photos){console.log(photo.id(),photo.size(),photo.filename())}
-	if (photos.length){
-		photos[Math.floor(Math.random() * photos.length)].id()
+	if (matchingPhotos.length){
+		const selectedPhoto=matchingPhotos[Math.floor(Math.random() * matchingPhotos.length)]
+		Application('Photos').export([selectedPhoto],{to:destination})
 	}"
-}
-
-# export photo with a given id to specified destination
-export_photo(){ local id="$1" destination="$2"
-	osascript -e 'tell application "Photos" ¬
-		to export { media item id "'"$id"'" } ¬
-		to (POSIX file "'"$destination"'")'
 }
 
 # output to stderr
@@ -69,12 +63,7 @@ do
 		# shellcheck disable=SC2064 # we want the dir name expanded now
 		trap "rm -rf '$image_dir'" EXIT
 
-			log 'all matching photos (id size filename): %s\n'
-		# get id of a photo being searched for, and if found, export the photo
-		{
-			id="$(search_for_photo "$search_term")"
-			[ -z "$id" ] || export_photo "$id" "$image_dir"
-		} 2>&1 | log
+			export_matching_photo "$search_term" "$image_dir"
 
 			log 'exported from photos:%s\n' "$(ls "$image_dir")"
 
