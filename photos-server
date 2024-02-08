@@ -24,13 +24,22 @@ mkfifo "$response_pipe"
 # print an id if there's a match, otherwise nothing.
 export_matching_photo(){ local search_term="$1" destination="$2"
 	osascript -l JavaScript -e "
-	const destination=Path('$destination')
-	const matchingPhotos=Application('Photos')
-		.search({for:'$search_term'})
-		.filter(x=>x.filename().match($image_regex))
-	if (matchingPhotos.length){
-		const selectedPhoto=matchingPhotos[Math.floor(Math.random() * matchingPhotos.length)]
-		Application('Photos').export([selectedPhoto],{to:destination})
+	function export_photo(mediaItem){
+		Application('Photos').export([mediaItem],{to:Path('$destination')})
+	}
+	try {
+		export_photo(Application('Photos').mediaItems.byId('$search_term'))
+	} catch {
+		const matchingPhotos=Application('Photos')
+			.search({for:'$search_term'})
+			.filter(x=>x.filename().match($image_regex))
+		if (matchingPhotos.length){
+			export_photo(
+				matchingPhotos[
+					Math.floor(Math.random() * matchingPhotos.length)
+				]
+			)
+		}
 	}"
 }
 
