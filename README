@@ -1,0 +1,43 @@
+# Photos Server
+
+Serves photos from the
+[Apple Photos](https://apps.apple.com/app/photos/id1584215428)
+application locally on your Mac.
+
+## Usage
+
+Apple Photos might have to be open for this to work.
+
+Make a HTTP request to `http://localhost:8363/PHOTO`...
+
+- If `PHOTO` is a valid photo ID in Apple Photos, that photo will be
+  returned.
+- Otherwise, `PHOTO` will be searched for in Apple Photos and a random
+  result will be returned. Results will be limited to JPEG and HEIC
+  files (no movies).
+- If nothing is found, a _404_ error will be returned along with a
+  placeholder image.
+
+## Implementation
+
+A bash script that listens to a local TCP port with `nc` for a request.
+It uses Javascript-for-Automation (JXA) to instruct Apple Photos to
+export the requested photo to a temporary directory from which is then
+served.
+
+This will export the modified version of the photo, and convert it from
+HEIC to JPEG if required. The conversion settings used by Apple Photos
+are undocumented.
+
+## To Do
+
+- [ ] Return a random photo if one is not specified [#feature](#)
+- [ ] Make sure hidden photos are never served, or only when the Hidden
+      photo album is visible [#feature](#)
+- [ ] Rewrite everything using the [bun](https://github.com/oven-sh/bun)
+      javascript runtime. #implementation [#implementation](#)
+- [ ] Confirm `8363` is an appropriate port to be listening on.
+      [#implementation](#)
+- [ ] Write an accompanying script that will put a markdown link on the
+      clipboard that addresses the selected photo in Apple Photos.
+      [#utility](#)
