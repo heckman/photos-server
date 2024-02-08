@@ -8,7 +8,7 @@
 # if photos returns multiple photos a random one is selected
 # if there are no matches a default placeholder is returned
 
-PORT=8363
+PORT=6330
 
 # items returned by Photos.app are filtered with this regex
 image_regex='/\.(jpeg|jpg|heic)$/i' # don't match movies
@@ -57,7 +57,7 @@ while true
 do
 	( cat "$response_pipe" ) \
 	| \
-	nc -l "$PORT" \
+	nc -6l "$PORT" \
 	| \
 	(
 		IFS= read -r request
