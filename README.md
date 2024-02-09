@@ -1,4 +1,4 @@
-# Photos Server
+# photos-server
 
 Serves photos from the
 [Apple Photos](https://apps.apple.com/app/photos/id1584215428)
@@ -6,9 +6,7 @@ application locally on your Mac.
 
 ## Usage
 
-Apple Photos might have to be open for this to work.
-
-Make a HTTP request to `http://localhost:8363/PHOTO`...
+Make a HTTP request to `http://localhost:6330/PHOTO`...
 
 - If `PHOTO` is a valid photo ID in Apple Photos, that photo will be
   returned.
@@ -17,6 +15,20 @@ Make a HTTP request to `http://localhost:8363/PHOTO`...
   files (no movies).
 - If nothing is found, a _404_ error will be returned along with a
   placeholder image.
+
+## Installation
+
+To install dependencies:
+
+```bash
+bun install
+```
+
+To start the server:
+
+```bash
+bun run index.ts
+```
 
 ## Implementation
 
@@ -29,15 +41,16 @@ This will export the modified version of the photo, and convert it from
 HEIC to JPEG if required. The conversion settings used by Apple Photos
 are undocumented.
 
+## Issues
+
+- there is nothing preventing hidden photos from being served if its id
+  is specified, but I'm pretty sure that they won't show up in searches
+
 ## To Do
 
-- [ ] Return a random photo if one is not specified [#feature](#)
-- [ ] Make sure hidden photos are never served, or only when the Hidden
-      photo album is visible [#feature](#)
-- [ ] Rewrite everything using the [bun](https://github.com/oven-sh/bun)
-      javascript runtime. #implementation [#implementation](#)
-- [ ] Confirm `8363` is an appropriate port to be listening on.
-      [#implementation](#)
-- [ ] Write an accompanying script that will put a markdown link on the
-      clipboard that addresses the selected photo in Apple Photos.
-      [#utility](#)
+- return a random photo if one is not specified (as long as there is
+  zero chance that a hidden photo will show up)
+
+---
+
+This project was created using `bun init` in bun v1.0.26. [Bun](https://bun.sh) is a fast all-in-one JavaScript runtime.

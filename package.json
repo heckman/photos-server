@@ -1,0 +1,15 @@
+{
+  "name": "photos-server",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "osa2": "^0.2.3",
+    "tmp": "^0.2.1"
+  }
+}
