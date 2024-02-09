@@ -9,6 +9,9 @@
     "typescript": "^5.0.0"
   },
   "dependencies": {
+    "@jxa/global-type": "^1.3.6",
+    "@jxa/run": "^1.3.6",
+    "@jxa/types": "^1.3.6",
     "osa2": "^0.2.3",
     "tmp": "^0.2.1"
   }
