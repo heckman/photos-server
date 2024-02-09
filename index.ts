@@ -15,9 +15,9 @@ serve({
     var status;
     const url = new URL(req.url);
     const query = decodeURI(url.pathname.slice(1)); // remove root /
+    console.log("");
     console.log(`query is ${query}`);
     const mediaItemId = await getMediaItemId(query);
-    console.log(`found mediaItem with id ${mediaItemId}`);
     if (mediaItemId) {
       const mediaDirectory = path.join(
         tmpdir(),
@@ -34,23 +34,31 @@ serve({
           `exported media item from Photos to ${mediaDirectory}`
         );
         filename = theFileIn(mediaDirectory);
-        if (filename != undefined) {
-          console.log(`export successful, found ${filename}`);
-          status = 200;
-        } else {
-          console.log(
-            `error: probably a problem exporting from Photos`
-          );
-          filename = errorFile;
-          status = 500;
-        }
+      }
+      if (filename) {
+        console.log(`serving ${filename}`);
+        filename = path.join(mediaDirectory, filename);
+        status = 200;
+      } else {
+        console.log(`ERROR: Problem exporting from Photos`);
+        filename = errorFile;
+        status = 500;
       }
     } else {
       console.log(`${query} not found, serving missing photo image`);
       filename = missingFile;
       status = 404;
     }
-    return new Response(Bun.file(filename), { status: status });
+    console.log("");
+
+    return new Response(Bun.file(filename), {
+      status: status,
+      headers: {
+        "content-disposition": `inline; filename="${path.basename(
+          filename
+        )}"`,
+      },
+    });
   },
 });
 
@@ -69,15 +77,16 @@ var getMediaItemId = osa((query: string) => {
   }
   var mediaItem = getMediaItemById(query);
   if (mediaItem.exists()) {
-    console.log("found media item by id");
+    console.log(`found media item with that id`);
     return mediaItem.id(); // this might be a movie
   } else {
-    console.log("about to do a search");
     var mediaItems = searchPhotos(query); // no movies
     console.log(`found ${mediaItems.length} media items`);
-    return mediaItems.length > 1 // return one at random
-      ? mediaItems[Math.floor(Math.random() * mediaItems.length)].id()
-      : mediaItems[0].id();
+    if (mediaItems.length == 0) return undefined;
+    if (mediaItems.length == 1) return mediaItems[0].id();
+    return mediaItems[
+      Math.floor(Math.random() * mediaItems.length)
+    ].id();
   }
 });
 var exportMediaItem = osa((id: string, posixPath: string) => {
@@ -91,12 +100,13 @@ var exportMediaItem = osa((id: string, posixPath: string) => {
 function theFileIn(directory: string) {
   try {
     console.log("looking for a file in " + directory);
-    const fileList = readdirSync(directory);
+    const fileList = readdirSync(directory).filter((filename) =>
+      filename.match(/^[^.]/)
+    );
     console.log("found " + fileList.length + " files");
-    console.log("will use " + fileList[0]);
-    return path.join(directory, fileList[0]);
+    return fileList[0];
   } catch (e) {
-    console.log("couldn't find directory " + directory);
-    return; // directory not found, return undefined
+    console.log("couldn't read directory " + directory);
+    return undefined; // directory not found, return undefined
   }
 }
