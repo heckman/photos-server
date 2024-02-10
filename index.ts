@@ -62,7 +62,8 @@ serve({
   },
 });
 
-// returns a mediaItem, or undefined if none found
+// JXA function
+// returns a mediaItem id, or undefined if none found
 var getMediaItemId = osa((query: string) => {
   function getMediaItemById(id: string) {
     return Application("Photos").mediaItems.byId(id);
@@ -89,6 +90,9 @@ var getMediaItemId = osa((query: string) => {
     ].id();
   }
 });
+
+// JXA function
+// directs Photos to export a specified mediaItem
 var exportMediaItem = osa((id: string, posixPath: string) => {
   const mediaItem = Application("Photos").mediaItems.byId(id);
   Application("Photos").export([mediaItem], {
@@ -97,11 +101,12 @@ var exportMediaItem = osa((id: string, posixPath: string) => {
 });
 
 // returns the full path to the (first) file in a non-empty directory
+// undefined if the directory doesn't exist or is empty
 function theFileIn(directory: string) {
   try {
     console.log("looking for a file in " + directory);
-    const fileList = readdirSync(directory).filter((filename) =>
-      filename.match(/^[^.]/)
+    const fileList = readdirSync(directory).filter(
+      (filename) => filename.match(/^[^.]/) // ignore hidden files!
     );
     console.log("found " + fileList.length + " files");
     return fileList[0];
