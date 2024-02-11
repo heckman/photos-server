@@ -1,0 +1,58 @@
+#!/usr/bin/osascript -l JavaScript
+function run(arguments) {
+  [[query, ...ignored], options] = parse_options(arguments, {
+    all: false, // false = only return one media item id
+    search: false, // true = search only: do not check for id match
+  });
+  if (!query) throw "no query specified";
+  if (!options.search && (id = is_valid_id(query))) return id;
+  var media_items = perform_photos_search(query); // no movies
+  if (!options.all) {
+    media_items = [random_member_of(media_items)];
+  }
+  return media_items.map((media_item) => media_item.id()).join("\n");
+}
+
+// array -> random item in array
+function random_member_of(an_array) {
+  return an_array[Math.floor(Math.random() * an_array.length)];
+}
+
+// possibly_interpreted_as_an_id -> valid_media_item_id or undefined
+function is_valid_id(possible_id) {
+  var media_item = perform_photos_id_lookup(possible_id);
+  if (!media_item.exists()) return undefined;
+  // don't return the query because it might be appended with garbage
+  return media_item.id(); // this might be a movie
+}
+
+// id -> media_item or undefined
+function perform_photos_id_lookup(id) {
+  return Application("Photos").mediaItems.byId(id);
+}
+
+// query -> [ media_items ] or []
+// only searches for photos--no movies
+function perform_photos_search(query) {
+  return Application("Photos")
+    .search({ for: query })
+    .filter((item) => item.filename().match(/\.(jpeg|jpg|heic)$/i));
+}
+
+// arguments, default_options -> [ arguments, options ]
+// separates options from arguments and validates them
+function parse_options(arguments, options = {}) {
+  var argument;
+  while ((argument = arguments.shift())) {
+    if (argument.charAt(0) != "-") {
+      arguments.unshift(argument);
+      break;
+    }
+    let option = argument.replace(/^--/, "");
+    if (!option) break; // argument was --
+    if (options[option] == undefined)
+      throw `unknown option: ${argument}`;
+    options[option] = !options[option]; // toggle option
+  }
+  return [arguments, options];
+}

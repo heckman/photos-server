@@ -1,0 +1,32 @@
+#!/usr/bin/osascript -l JavaScript
+function run(arguments) {
+  [id_list, destination, ...ignored] = arguments;
+  if (!id_list) throw "no id list provided";
+  if (looks_like_an_id(destination)) {
+    // all arguments are ids
+    id_list = arguments.flatMap((argument) => argument.split(/\s/));
+    destination = ".";
+  } else {
+    id_list = id_list.split(/\s/); // string -> array
+    if (!destination) destination = ".";
+  }
+  perform_media_items_export(id_list, destination);
+}
+
+// SIDE EFFECT: writes media item to file
+function perform_media_items_export(ids, posix_path) {
+  var media_items = [];
+  for (id of ids) {
+    media_items.push(Application("Photos").mediaItems.byId(id));
+  }
+  Application("Photos").export(media_items, {
+    to: Path(posix_path),
+  });
+}
+
+function looks_like_an_id(possible_id) {
+  // /^[0-9a-fA-F]/.test(possible_id);
+  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/.test(
+    possible_id
+  );
+}
