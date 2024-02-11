@@ -1,6 +1,6 @@
 {
   "name": "photos-server",
-  "module": "index.ts",
+  "module": "src/photos-server.ts",
   "devDependencies": {
     "@types/bun": "latest"
   },

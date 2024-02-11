@@ -4,11 +4,20 @@ import path from "node:path";
 import { tmpdir } from "node:os";
 import { execSync } from "node:child_process";
 
+// where resources are
+
+const assetsDirectory = path.join(__dirname, "..", "assets");
+const missingFile = path.join(assetsDirectory, "missing.png");
+const errorFile = path.join(assetsDirectory, "error.png");
+
+const jxa_directory = path.join(__dirname, "..", "bin");
+const exe_get_id = path.join(jxa_directory, "get-photo-id");
+const exe_export_photos = path.join(
+  jxa_directory,
+  "export-photos-by-id"
+);
+
 const imageDirectoryPrefix = "photos-server-image_";
-const missingFile = path.join(__dirname, "missing.png");
-const errorFile = path.join(__dirname, "error.png");
-const jxa_get_id = path.join(__dirname, "get-photo-id");
-const jxa_export_photos = path.join(__dirname, "export-photos-by-id");
 
 serve({
   port: 6330,
@@ -19,7 +28,7 @@ serve({
     const query = decodeURI(url.pathname.slice(1)); // remove root '/'
     console.log("");
     console.log(`query is ${query}`);
-    const mediaItemId = quoted_exec([jxa_get_id, query])
+    const mediaItemId = quoted_exec([exe_get_id, query])
       .toString()
       .trim();
     if (mediaItemId) {
@@ -33,7 +42,7 @@ serve({
       } else {
         mkdirSync(mediaDirectory, { recursive: true });
         console.log(`made the directory ${mediaDirectory}`);
-        quoted_exec([jxa_export_photos, mediaItemId, mediaDirectory]);
+        quoted_exec([exe_export_photos, mediaItemId, mediaDirectory]);
         console.log(
           `exported media item from Photos to ${mediaDirectory}`
         );
