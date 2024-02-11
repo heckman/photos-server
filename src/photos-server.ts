@@ -24,41 +24,48 @@ serve({
   fetch(req) {
     var filename;
     var status;
+    var query;
     const url = new URL(req.url);
-    const query = decodeURI(url.pathname.slice(1)); // remove root '/'
-    console.log("");
-    console.log(`query is ${query}`);
-    const mediaItemId = quoted_exec([exe_get_id, query])
-      .toString()
-      .trim();
-    if (mediaItemId) {
-      const mediaDirectory = path.join(
-        tmpdir(),
-        imageDirectoryPrefix + mediaItemId
-      );
-      filename = theFileIn(mediaDirectory);
-      if (filename != undefined) {
-        console.log(`using previous export of ${filename}`);
-      } else {
-        mkdirSync(mediaDirectory, { recursive: true });
-        console.log(`made the directory ${mediaDirectory}`);
-        quoted_exec([exe_export_photos, mediaItemId, mediaDirectory]);
-        console.log(
-          `exported media item from Photos to ${mediaDirectory}`
+    console.log(url.pathname);
+    if ((query = valid_path(url.pathname))) {
+      console.log("");
+      console.log(`query is: ${query}`);
+      const mediaItemId = quoted_exec([exe_get_id, query])
+        .toString()
+        .trim();
+      if (mediaItemId) {
+        const mediaDirectory = path.join(
+          tmpdir(),
+          imageDirectoryPrefix + mediaItemId
         );
         filename = theFileIn(mediaDirectory);
-      }
-      if (filename) {
-        console.log(`serving ${filename}`);
-        filename = path.join(mediaDirectory, filename);
-        status = 200;
+        if (filename != undefined) {
+          console.log(`using previous export of ${filename}`);
+        } else {
+          mkdirSync(mediaDirectory, { recursive: true });
+          console.log(`made the directory ${mediaDirectory}`);
+          quoted_exec([exe_export_photos, mediaItemId, mediaDirectory]);
+          console.log(
+            `exported media item from Photos to ${mediaDirectory}`
+          );
+          filename = theFileIn(mediaDirectory);
+        }
+        if (filename) {
+          console.log(`serving ${filename}`);
+          filename = path.join(mediaDirectory, filename);
+          status = 200;
+        } else {
+          console.log(`ERROR: Problem exporting from Photos`);
+          filename = errorFile;
+          status = 500;
+        }
       } else {
-        console.log(`ERROR: Problem exporting from Photos`);
-        filename = errorFile;
-        status = 500;
+        console.log(`${query} not found, serving missing photo image`);
+        filename = missingFile;
+        status = 404;
       }
     } else {
-      console.log(`${query} not found, serving missing photo image`);
+      console.log(`bad url path: ${url.pathname}`);
       filename = missingFile;
       status = 404;
     }
@@ -100,4 +107,13 @@ function quoted_exec(command: any[], options = {}) {
 // wrap the text in ' after replacing all instances of ' with '"'"'
 function quoted(text: string) {
   return "'" + text.replaceAll("'", "'\"'\"'") + "'";
+}
+
+function valid_path(url_path: string) {
+  try {
+    var query = decodeURI(url_path.slice(1)); // remove root '/'
+    return query; // blank query not allowed
+  } catch (e) {
+    return undefined;
+  }
 }
