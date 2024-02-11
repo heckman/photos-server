@@ -7,8 +7,8 @@ import { execSync } from "node:child_process";
 const imageDirectoryPrefix = "photos-server-image_";
 const missingFile = path.join(__dirname, "missing.png");
 const errorFile = path.join(__dirname, "error.png");
-const get_photo_id = path.join(__dirname, "get-photo-id");
-const export_photos_by_id = path.join(__dirname, "export-photos-by-id");
+const jxa_get_id = path.join(__dirname, "get-photo-id");
+const jxa_export_photos = path.join(__dirname, "export-photos-by-id");
 
 serve({
   port: 6330,
@@ -16,10 +16,10 @@ serve({
     var filename;
     var status;
     const url = new URL(req.url);
-    const query = decodeURI(url.pathname.slice(1)); // remove root /
+    const query = decodeURI(url.pathname.slice(1)); // remove root '/'
     console.log("");
     console.log(`query is ${query}`);
-    const mediaItemId = execSync(`${get_photo_id} ${query}`)
+    const mediaItemId = execSync(`${jxa_get_id} ${query}`)
       .toString()
       .trim();
     if (mediaItemId) {
@@ -34,7 +34,7 @@ serve({
         mkdirSync(mediaDirectory, { recursive: true });
         console.log(`made the directory ${mediaDirectory}`);
         execSync(
-          `${export_photos_by_id} ${mediaItemId} ${mediaDirectory}`
+          `${jxa_export_photos} ${mediaItemId} ${mediaDirectory}`
         );
         console.log(
           `exported media item from Photos to ${mediaDirectory}`
