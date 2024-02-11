@@ -19,7 +19,7 @@ serve({
     const query = decodeURI(url.pathname.slice(1)); // remove root '/'
     console.log("");
     console.log(`query is ${query}`);
-    const mediaItemId = execSync(`${jxa_get_id} ${query}`)
+    const mediaItemId = quoted_exec([jxa_get_id, query])
       .toString()
       .trim();
     if (mediaItemId) {
@@ -33,9 +33,7 @@ serve({
       } else {
         mkdirSync(mediaDirectory, { recursive: true });
         console.log(`made the directory ${mediaDirectory}`);
-        execSync(
-          `${jxa_export_photos} ${mediaItemId} ${mediaDirectory}`
-        );
+        quoted_exec([jxa_export_photos, mediaItemId, mediaDirectory]);
         console.log(
           `exported media item from Photos to ${mediaDirectory}`
         );
@@ -82,4 +80,15 @@ function theFileIn(directory: string) {
     console.log("couldn't read directory " + directory);
     return undefined; // directory not found, return undefined
   }
+}
+
+// wrapper to execSync that first quotes all the arguments
+// note that the command+args are expected in an array
+function quoted_exec(command: any[], options = {}) {
+  return execSync(command.map(quoted).join(" "), options);
+}
+
+// wrap the text in ' after replacing all instances of ' with '"'"'
+function quoted(text: string) {
+  return "'" + text.replaceAll("'", "'\"'\"'") + "'";
 }
