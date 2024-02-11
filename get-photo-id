@@ -4,10 +4,12 @@ function run(arguments) {
     all: false, // false = only return one media item id
     search: false, // true = search only: do not check for id match
   });
+
   if (!query) throw "no query specified";
   if (!options.search && (id = is_valid_id(query))) return id;
+
   var media_items = perform_photos_search(query); // no movies
-  if (!options.all) {
+  if (!options.all && media_items.length > 0) {
     media_items = [random_member_of(media_items)];
   }
   return media_items.map((media_item) => media_item.id()).join("\n");
@@ -23,6 +25,7 @@ function is_valid_id(possible_id) {
   var media_item = perform_photos_id_lookup(possible_id);
   if (!media_item.exists()) return undefined;
   // don't return the query because it might be appended with garbage
+  console.log("foo");
   return media_item.id(); // this might be a movie
 }
 
