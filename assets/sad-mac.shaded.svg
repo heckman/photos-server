@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+hand-coded and shaded svg by Erik Ben Heckman https://erik.heckman.ca
+of the original "Sad Mac" icon by Susan Kare https://kareprints.com
+-->
+<svg viewBox="0 0 37 37" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <g id="shading">
+    <path id="mask" fill="#f4f4f4" d="
+    M6,4 h25 v26 h-25 z M7,3 h23 v32 h-23 zM8,2 h 21 v 2 h-21 z"></path>
+    <path id="screen" fill="#fafafa" d="
+    M10,6 h17 v14 h-17 Z"></path>
+    <path id="plinth" fill="#ddd" d="
+    M8,31 h21 v 3 h-21 Z"></path>
+  </g>
+  <path id="lines" fill-rule="evenodd" fill="black" d="
+    M6,4 h25 v26 h-25 z M7,3 h23 v32 h-23 z M8,2 h 21 v 2 h-21 z M8,31 h21 v 3 h-21 Z
+    M10,5 h17 v16 h-17 z M9,6 h19 v14 h-19 Z
+    M13,9 h1 v3 h-1 v-1 h3 v1 h-1 v-3 h1 v1 h-3 Z
+    M21,9 h1 v3 h-1 v-1 h3 v1 h-1 v-3 h1 v1 h-3 Z
+    M16,13 h1 v2 h2 v-2 h1 v1 h-4 Z
+    M16,16 h5 v2 h3 v1 h-1 v-2 h-8 v 1 h 1 Z
+    M9,26 h2 v1 h-2 Z
+    M21,25 h6 v1 h-6 Z"></path>
+</svg>

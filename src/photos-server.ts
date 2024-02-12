@@ -12,8 +12,8 @@ const get_photo_id_timeout_seconds = 3;
 
 // where resources are
 const assets_directory = path.join(__dirname, "..", "assets");
-const missing_image = path.join(assets_directory, "missing.png");
-const error_image = path.join(assets_directory, "error.png");
+const missing_image = path.join(assets_directory, "broken-image.svg");
+const error_image = path.join(assets_directory, "sad-mac.svg");
 
 const jxa_directory = path.join(__dirname, "..", "bin");
 const exe_get_id = path.join(jxa_directory, "get-photo-id");
