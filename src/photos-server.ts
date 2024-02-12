@@ -2,10 +2,14 @@ import { serve } from "bun";
 import { mkdirSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
-import { execSync } from "node:child_process";
+import { execSync, spawnSync } from "node:child_process";
+
+// server settings
+const port = 6330;
+
+const exe_timeout_ms = 6000; // to abort overly-broad photo searches
 
 // where resources are
-
 const assets_directory = path.join(__dirname, "..", "assets");
 const missing_image = path.join(assets_directory, "missing.png");
 const error_image = path.join(assets_directory, "error.png");
@@ -17,23 +21,41 @@ const exe_export_photos = path.join(
   "export-photos-by-id"
 );
 
+// until bun's child_process library supports timeouts
+// we have this unfortunate dependency...
+var exe_timeout_command: string;
+try {
+  exe_timeout_command = execSync("which timeout").toString().trim();
+} catch (e) {
+  console.log(
+    "requires timeout, install with 'brew install coreutils'"
+  );
+  process.exit(1);
+}
+
+// identifies the server's temporary directories
 const tmp_dir_prefix = "photos-server-image_";
 
 serve({
-  port: 6330,
+  port: port,
   fetch(req) {
-    var query, id, filename;
-    const url = new URL(req.url);
-    // blank query returns 404 not found
-    console.log("");
-    console.log(`-> request: ${url.pathname}`);
-    if (!(query = get_query(url.pathname))) return withError(404);
-    console.log(`-> query: ${query}`);
-    if (!(id = get_photo_id(query))) return withError(404);
-    console.log(`-> photo id: ${id}`);
-    if (!(filename = get_photo_file(id))) return withError(500);
-    console.log(`-> filename: ${filename}`);
-    return withImage(filename);
+    try {
+      var query, id, filename;
+      const url = new URL(req.url);
+      // blank query returns 404 not found
+      console.log("");
+      console.log(`-> request: ${url.pathname}`);
+      if (!(query = get_query(url.pathname))) return withError(404);
+      console.log(`-> query: ${query}`);
+      if (!(id = get_photo_id(query))) return withError(404);
+      console.log(`-> photo id: ${id}`);
+      if (!(filename = get_photo_file(id))) return withError(500);
+      console.log(`-> filename: ${filename}`);
+      return withImage(filename);
+    } catch (e) {
+      console.log(e); // most likely a timeout
+      return withError(500);
+    }
   },
 });
 
@@ -107,8 +129,18 @@ function withImage(filename: string, status = 200) {
 
 // wrapper to execSync that first quotes all the arguments
 // note that the command+args are expected in an array
-function quoted_exec(command: any[], options = {}) {
-  return execSync(command.map(quoted).join(" "), options);
+//
+// remove timeout_hack_prefix when execSync is fixed and can take a timeout option
+function quoted_exec(
+  command: any[],
+  options = { timeout: exe_timeout_ms }
+) {
+  const timeout_hack_prefix =
+    exe_timeout_command + " " + options.timeout / 1000 + " ";
+  return execSync(
+    timeout_hack_prefix + command.map(quoted).join(" "),
+    options
+  );
 }
 
 // wrap the text in ' after replacing all instances of ' with '"'"'
