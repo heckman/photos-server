@@ -7,7 +7,8 @@ import { execSync, spawnSync } from "node:child_process";
 // server settings
 const port = 6330;
 
-const exe_timeout_ms = 6000; // to abort overly-broad photo searches
+// to abort overly-broad photo searches, set to 0 for no timeout
+const get_photo_id_timeout_seconds = 3;
 
 // where resources are
 const assets_directory = path.join(__dirname, "..", "assets");
@@ -20,18 +21,6 @@ const exe_export_photos = path.join(
   jxa_directory,
   "export-photos-by-id"
 );
-
-// until bun's child_process library supports timeouts
-// we have this unfortunate dependency...
-var exe_timeout_command: string;
-try {
-  exe_timeout_command = execSync("which timeout").toString().trim();
-} catch (e) {
-  console.log(
-    "requires timeout, install with 'brew install coreutils'"
-  );
-  process.exit(1);
-}
 
 // identifies the server's temporary directories
 const tmp_dir_prefix = "photos-server-image_";
@@ -69,7 +58,14 @@ function get_query(url_path: string) {
 }
 
 function get_photo_id(query: string) {
-  return quoted_exec([exe_get_id, query]).toString().trim();
+  return quoted_exec([
+    exe_get_id,
+    "--timeout",
+    get_photo_id_timeout_seconds,
+    query,
+  ])
+    .toString()
+    .trim();
 }
 
 function get_photo_file(photo_id: string) {
@@ -129,21 +125,11 @@ function withImage(filename: string, status = 200) {
 
 // wrapper to execSync that first quotes all the arguments
 // note that the command+args are expected in an array
-//
-// remove timeout_hack_prefix when execSync is fixed and can take a timeout option
-function quoted_exec(
-  command: any[],
-  options = { timeout: exe_timeout_ms }
-) {
-  const timeout_hack_prefix =
-    exe_timeout_command + " " + options.timeout / 1000 + " ";
-  return execSync(
-    timeout_hack_prefix + command.map(quoted).join(" "),
-    options
-  );
+function quoted_exec(command: any[], options = {}) {
+  return execSync(command.map(quoted).join(" "), options);
 }
 
 // wrap the text in ' after replacing all instances of ' with '"'"'
 function quoted(text: string) {
-  return "'" + text.replaceAll("'", "'\"'\"'") + "'";
+  return "'" + String(text).replaceAll("'", "'\"'\"'") + "'";
 }

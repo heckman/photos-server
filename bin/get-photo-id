@@ -1,10 +1,25 @@
 #!/usr/bin/osascript -l JavaScript
+
+function timeout(seconds) {
+  if (0 < seconds) {
+    ObjC.import("stdlib");
+    $.system(`
+    pid=$(ps -o ppid= $$)
+    {
+      sleep ${seconds}
+      kill $pid 2>/dev/null
+    }&
+  `);
+  }
+}
+
 function run(arguments) {
   [[query, ...ignored], options] = parse_options(arguments, {
     all: false, // false = only return one media item id
     search: false, // true = search only: do not check for id match
+    timeout: 0, // abort after this many seconds, 0 = never
   });
-
+  timeout(options.timeout);
   if (!query) throw "no query specified";
   if (!options.search && (id = is_valid_id(query))) return id;
 
@@ -43,7 +58,7 @@ function perform_photos_search(query) {
 }
 
 // arguments, default_options -> [ arguments, options ]
-// separates options from arguments and validates them
+// separates options (long form only) from arguments and validates them
 function parse_options(arguments, options = {}) {
   var argument;
   while ((argument = arguments.shift())) {
@@ -55,7 +70,15 @@ function parse_options(arguments, options = {}) {
     if (!option) break; // argument was --
     if (options[option] == undefined)
       throw `unknown option: ${argument}`;
-    options[option] = !options[option]; // toggle option
+    if (options[option] === true) options[option] = false;
+    else if (options[option] === false) options[option] = true;
+    else {
+      // expects a value
+      let value = arguments.shift();
+      if (!value || value == "--")
+        throw `missing value for option: ${option}`;
+      options[option] = value;
+    }
   }
   return [arguments, options];
 }
