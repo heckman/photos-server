@@ -8,7 +8,7 @@ import { execSync, spawnSync } from "node:child_process";
 const port = 6330;
 
 // to abort overly-broad photo searches, set to 0 for no timeout
-const get_photo_id_timeout_seconds = 3;
+const get_photo_id_timeout_seconds = 5;
 
 // where resources are
 const assets_directory = path.join(__dirname, "..", "assets");
@@ -25,6 +25,18 @@ const exe_export_photos = path.join(
 // identifies the server's temporary directories
 const tmp_dir_prefix = "photos-server-image_";
 
+// until bun's child_process library supports timeouts
+// we have this unfortunate dependency...
+var exe_timeout_command: string;
+try {
+  exe_timeout_command = execSync("which timeout").toString().trim();
+} catch (e) {
+  console.log(
+    "requires GNU timeout, install with 'brew install coreutils'"
+  );
+  process.exit(1);
+}
+
 serve({
   port: port,
   fetch(req) {
@@ -37,7 +49,8 @@ serve({
     console.log(`-> query: ${query}`);
     try {
       if (!(id = get_photo_id(query))) return withError(404);
-    } catch (e) {
+    } catch (e: any) {
+      console.log(`###ERROR: ${e}`);
       return withError(500); // most likely timed out from overly-broad search
     }
     console.log(`-> photo id: ${id}`);
@@ -57,12 +70,15 @@ function get_query(url_path: string) {
 }
 
 function get_photo_id(query: string) {
-  return quoted_exec([
-    exe_get_id,
-    "--timeout",
-    get_photo_id_timeout_seconds,
-    query,
-  ])
+  return quoted_exec(
+    [
+      exe_get_id,
+      // "--timeout",
+      // get_photo_id_timeout_seconds,
+      query,
+    ],
+    get_photo_id_timeout_seconds
+  )
     .toString()
     .trim();
 }
@@ -128,8 +144,13 @@ function withImage(filename: string, status = 200) {
 
 // wrapper to execSync that first quotes all the arguments
 // note that the command+args are expected in an array
-function quoted_exec(command: any[], options = {}) {
-  return execSync(command.map(quoted).join(" "), options);
+function quoted_exec(command: any[], timeout_seconds = 0) {
+  // remove timeout_hack_prefix when execSync is fixed and can take a timeout option
+  const timeout_hack_prefix =
+    timeout_seconds > 0
+      ? exe_timeout_command + " " + timeout_seconds + " "
+      : "";
+  return execSync(timeout_hack_prefix + command.map(quoted).join(" "));
 }
 
 // wrap the text in ' after replacing all instances of ' with '"'"'
