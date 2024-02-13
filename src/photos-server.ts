@@ -1,8 +1,8 @@
 import { serve } from "bun";
-import { mkdirSync, readdirSync } from "node:fs";
+import { mkdir, readdir } from "node:fs/promises";
 import path from "node:path";
 import { tmpdir } from "node:os";
-import { execSync, spawnSync } from "node:child_process";
+import { exec, spawn } from "node:child_process";
 
 // server settings
 const port = 6330;
@@ -27,100 +27,98 @@ const tmp_dir_prefix = "photos-server-image_";
 
 serve({
   port: port,
-  fetch(req) {
-    var query, id, filename;
-    const url = new URL(req.url);
-    // blank query returns 404 not found
-    console.log("");
-    console.log(`-> request: ${url.pathname}`);
-    if (!(query = get_query(url.pathname))) return withError(404);
-    console.log(`-> query: ${query}`);
-    try {
-      if (!(id = get_photo_id(query))) return withError(404);
-    } catch (e) {
-      return withError(500); // most likely timed out from overly-broad search
-    }
-    console.log(`-> photo id: ${id}`);
-    if (!(filename = get_photo_file(id))) return withError(500);
-    console.log(`-> filename: ${filename}`);
-    return withImage(filename);
+  async fetch(req) {
+    return await get_query(new URL(req.url).pathname.slice(1)) // drop leading slash
+      .then(get_photo_id)
+      .then(get_photo_file)
+      .then(respond_with_photo)
+      .catch(respond_with_error);
   },
 });
 
-function get_query(url_path: string) {
+async function get_query(url_path: string) {
   try {
-    var query = decodeURI(url_path.slice(1)); // remove root '/'
+    const query = decodeURI(url_path);
+    if (!query) throw new Error("No query");
     return query;
   } catch (e) {
-    return null;
+    throw new Error("404", { cause: e });
   }
 }
 
-function get_photo_id(query: string) {
-  return quoted_exec([
-    exe_get_id,
-    "--timeout",
-    get_photo_id_timeout_seconds,
-    query,
-  ])
-    .toString()
-    .trim();
+// query -> id / 404 not found, 504 gateway timeout
+async function get_photo_id(query: string) {
+  const id = await call_get_id(query).toString().trim();
+  if (!id) throw new Error("404", { cause: new Error("ID not found") });
+  return id;
 }
 
-function get_photo_file(photo_id: string) {
-  var filename;
-  const directory = path.join(tmpdir(), tmp_dir_prefix + photo_id);
-  console.log("   - target directory: " + directory);
-  if (!(filename = a_file_in(directory))) {
-    console.log("   - didn't find anything");
-    export_photo(photo_id, directory);
-    if (!(filename = a_file_in(directory))) {
-      console.log("   - still didn't find anything");
-      return null;
-    }
-  }
-  console.log("   - found " + filename);
-  return path.join(directory, filename);
-}
-
-function a_file_in(directory: string) {
+async function call_get_id(query: string) {
   try {
-    console.log("   - looking for a file");
-    return readdirSync(directory)
-      .filter(
-        (filename) => filename.match(/^[^.]/) // ignore hidden files!
-      )
-      .shift();
+    return call([
+      exe_get_id,
+      "--timeout",
+      get_photo_id_timeout_seconds,
+      query,
+    ]);
   } catch (e) {
-    console.log("   - couldn't read directory");
-    return undefined; // directory not found, return undefined
+    throw new Error("504", { cause: e }); // probably a timeout issue
   }
 }
 
-function export_photo(photo_id: string, photo_folder: string) {
-  console.log("   - making directory for photo");
-  mkdirSync(photo_folder, { recursive: true });
-  console.log("   - exporting photo ");
-  try {
-    quoted_exec([exe_export_photos, photo_id, photo_folder]);
-  } catch (e) {
-    // then nothing is exported, which we catch later
-  }
+async function get_photo_file(id: string) {
+  console.log(`-> photo id: ${id}`);
+  const directory = path.join(tmpdir(), tmp_dir_prefix + id);
+  return a_file_in(directory)
+    .catch(() =>
+      call_export_photo(id, directory)
+        .then(() => a_file_in(directory))
+        .catch((e) => {
+          throw new Error("500", {
+            cause: new Error("Export failed", { cause: e }),
+          });
+        })
+    )
+    .then(async (filename) => path.join(directory, filename));
 }
 
-function withError(status: number) {
-  console.log("   - error status " + status);
-  return withImage(status < 500 ? missing_image : error_image, status);
+async function a_file_in(directory: string) {
+  return readdir(directory)
+    .then(async (file_list) => {
+      const filename = file_list
+        .filter(
+          (filename) => filename.match(/^[^.]/) // ignore hidden files!
+        )
+        .shift();
+      if (!filename) throw new Error(`No file in ${directory}`);
+      return filename;
+    })
+    .catch((e) => {
+      throw new Error("File not found", { cause: e });
+    });
 }
 
-function withImage(filename: string, status = 200) {
-  console.log("   - sending image");
-  return new Response(Bun.file(filename), {
+async function call_export_photo(id: string, directory: string) {
+  console.log(`   - exporting to: ${directory}`);
+  return await call([exe_export_photos, id, directory]);
+}
+
+function respond_with_error(exception: Error) {
+  console.log(JSON.stringify(exception));
+  const status = Number(exception.message);
+  return respond_with_photo(
+    status < 500 ? missing_image : error_image,
+    status
+  );
+}
+
+function respond_with_photo(absolute_filename: string, status = 200) {
+  console.log(`   - sending image: ${absolute_filename}`);
+  return new Response(Bun.file(absolute_filename), {
     status: status,
     headers: {
-      // filename is absolute
       "content-disposition": `inline; filename="${path.basename(
-        filename
+        absolute_filename
       )}"`,
     },
   });
@@ -128,8 +126,8 @@ function withImage(filename: string, status = 200) {
 
 // wrapper to execSync that first quotes all the arguments
 // note that the command+args are expected in an array
-function quoted_exec(command: any[], options = {}) {
-  return execSync(command.map(quoted).join(" "), options);
+async function call(command: any[], options = {}) {
+  return exec(command.map(quoted).join(" "), options);
 }
 
 // wrap the text in ' after replacing all instances of ' with '"'"'
