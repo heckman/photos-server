@@ -28,23 +28,22 @@ const tmp_dir_prefix = "photos-server-image_";
 serve({
   port: port,
   fetch(req) {
+    var query, id, filename;
+    const url = new URL(req.url);
+    // blank query returns 404 not found
+    console.log("");
+    console.log(`-> request: ${url.pathname}`);
+    if (!(query = get_query(url.pathname))) return withError(404);
+    console.log(`-> query: ${query}`);
     try {
-      var query, id, filename;
-      const url = new URL(req.url);
-      // blank query returns 404 not found
-      console.log("");
-      console.log(`-> request: ${url.pathname}`);
-      if (!(query = get_query(url.pathname))) return withError(404);
-      console.log(`-> query: ${query}`);
       if (!(id = get_photo_id(query))) return withError(404);
-      console.log(`-> photo id: ${id}`);
-      if (!(filename = get_photo_file(id))) return withError(500);
-      console.log(`-> filename: ${filename}`);
-      return withImage(filename);
     } catch (e) {
-      console.log(e); // most likely a timeout
-      return withError(500);
+      return withError(500); // most likely timed out from overly-broad search
     }
+    console.log(`-> photo id: ${id}`);
+    if (!(filename = get_photo_file(id))) return withError(500);
+    console.log(`-> filename: ${filename}`);
+    return withImage(filename);
   },
 });
 
@@ -53,7 +52,7 @@ function get_query(url_path: string) {
     var query = decodeURI(url_path.slice(1)); // remove root '/'
     return query;
   } catch (e) {
-    return undefined;
+    return null;
   }
 }
 
@@ -102,7 +101,11 @@ function export_photo(photo_id: string, photo_folder: string) {
   console.log("   - making directory for photo");
   mkdirSync(photo_folder, { recursive: true });
   console.log("   - exporting photo ");
-  quoted_exec([exe_export_photos, photo_id, photo_folder]);
+  try {
+    quoted_exec([exe_export_photos, photo_id, photo_folder]);
+  } catch (e) {
+    // then nothing is exported, which we catch later
+  }
 }
 
 function withError(status: number) {
