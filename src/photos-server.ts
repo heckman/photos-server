@@ -29,19 +29,44 @@ const tmp_dir_prefix = "photos-server-image_";
 
 serve({
   port: port,
-  fetch(req) {
-    return get_photo_id(get_query(new URL(req.url).pathname))
-      .then(get_photo_file)
-      .then(respond_with_photo)
-      .catch(respond_with_error);
+  async fetch(req) {
+    try {
+      const query = await get_query(new URL(req.url).pathname);
+      const photo_id = await get_photo_id(query);
+      const filename = await get_photo_file(photo_id);
+      return respond_with_photo(filename);
+    } catch (error: any) {
+      error = wrap_unknown_errors(error);
+      log("error", error);
+      return respond_with_error(error);
+    }
   },
 });
 
+function wrap_unknown_errors(error: any) {
+  return error.message?.match(/^[45][0-9][0-9]$/)
+    ? error
+    : new Error("500", { cause: error }); // unknown error
+}
+
+function log(message: string = "", obj: any = "") {
+  console.log(
+    message
+      ? "[" + new Date().toISOString() + "]  " + message.padEnd(10)
+      : "",
+    obj
+      ? JSON.stringify(obj, Object.getOwnPropertyNames(obj), "\t")
+      : ""
+  );
+}
+
 // url_path -> id  /  404 not found (no query or invalid URI)
 function get_query(url_path: string) {
+  log("path", url_path);
   try {
     const query = decodeURI(url_path).slice(1); // drop leading slash
     if (!query) throw new Error("No query");
+    log("query", query);
     return query;
   } catch (e) {
     throw new Error("404", { cause: e });
@@ -49,73 +74,69 @@ function get_query(url_path: string) {
 }
 
 // query -> id  /  404 not found or 504 gateway timeout
-function get_photo_id(query: string): Promise<string> {
-  return call_get_id(query).then((id) => {
-    if (!id)
-      throw new Error("404", { cause: new Error("ID not found") });
-    return id;
-  });
+async function get_photo_id(query: string): Promise<string> {
+  const id = await call_get_id(query);
+  if (!id) throw new Error("404", { cause: new Error("ID not found") });
+  log("id", id);
+  return id;
 }
 
 // query -> id  /  500 (probably a timeout error)
-function call_get_id(query: string): Promise<string> {
-  return call([
-    exe_get_id,
-    "--timeout",
-    get_photo_id_timeout_seconds,
-    query,
-  ]).catch((e) => {
+async function call_get_id(query: string): Promise<string> {
+  try {
+    return await call([
+      exe_get_id,
+      "--timeout",
+      get_photo_id_timeout_seconds,
+      query,
+    ]);
+  } catch (e) {
+    // probably a timeout issue
+    // but don't respond gateway timeout or the client might retry
     throw new Error("500", { cause: e });
-  }); // probably a timeout issue but don't respond gateway timeout or the client might retry
+  }
 }
 
 // id -> filename  /  500 internal error (export failed)
-function get_photo_file(id: string): Promise<string> {
-  console.log(`-> photo id: ${id}`);
+async function get_photo_file(id: string): Promise<string> {
   const directory = path.join(tmp_dir, tmp_dir_prefix + id);
-  return a_file_in(directory)
-    .catch(() =>
-      call_export_photo(id, directory)
-        .then(() => a_file_in(directory))
-        .catch((e) => {
-          throw new Error("500", {
-            cause: new Error("Export failed", { cause: e }),
-          });
-        })
-    )
-    .then(async (filename) => path.join(directory, filename));
+  try {
+    return await a_file_in(directory);
+  } catch (e) {
+    log("no files", directory);
+    try {
+      await mkdir(directory, { recursive: true });
+      await call_export_photo(id, directory);
+      return await a_file_in(directory);
+    } catch (e) {
+      throw new Error("500", {
+        cause: new Error("Export failed", { cause: e }),
+      });
+    }
+  }
 }
 
 // directory -> filename // Error (no file in directory or file not found)
-function a_file_in(directory: string): Promise<string> {
-  return readdir(directory).then((file_list) => {
-    const filename = file_list
-      .filter(
-        (filename) => filename.match(/^[^.]/) // ignore hidden files!
-      )
-      .shift();
-    if (!filename)
-      throw new Error(`No non-hidden files in ${directory}`);
-    return filename;
-  });
+async function a_file_in(directory: string): Promise<string> {
+  const filename = (await readdir(directory))
+    .filter((filename) => filename.match(/^[^.]/)) // ignore hidden files!
+    .shift();
+  if (!filename) throw new Error(`No non-hidden files in ${directory}`);
+  const absolute_filename = path.join(directory, filename);
+  log("filename", absolute_filename);
+  return absolute_filename;
 }
 
+// id, directory | side-effect: exports a photo from Photos.app
 function call_export_photo(
   id: string,
   directory: string
 ): Promise<string> {
-  console.log(`   - exporting to: ${directory}`);
+  log("exporting", directory);
   return call([exe_export_photos, id, directory]);
 }
 
 function respond_with_error(exception: Error): Response {
-  console.log(
-    JSON.stringify(
-      exception,
-      Object.getOwnPropertyNames(exception),
-      "    "
-    )
-  );
   const status = Number(exception.message);
   return respond_with_photo(
     status < 500 ? missing_image : error_image,
@@ -127,20 +148,19 @@ function respond_with_photo(
   absolute_filename: string,
   status = 200
 ): Response {
-  console.log(`   - sending image: ${absolute_filename}`);
+  const basename = path.basename(absolute_filename);
+  log("sending", basename);
   return new Response(Bun.file(absolute_filename), {
     status: status,
     headers: {
-      "content-disposition": `inline; filename="${path.basename(
-        absolute_filename
-      )}"`,
+      "content-disposition": `inline; filename="${basename}"`,
     },
   });
 }
 
 // exec Promise wrapper that first quotes all the arguments
 // note that the command+args are expected in an array
-function call(command: any[], options = {}): Promise<string> {
+async function call(command: any[], options = {}): Promise<string> {
   return new Promise((resolve, reject) => {
     exec(
       command.map(quoted).join(" "),
