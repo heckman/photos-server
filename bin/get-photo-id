@@ -20,7 +20,15 @@ function run(arguments) {
 
   set_timeout(options.timeout); // to abort overly-broad searches
 
-  if (!options.search && (id = is_valid_id(query))) return id;
+  if (
+    !options.search &&
+    looks_like_an_id(query) &&
+    (id = is_valid_id(query))
+  ) {
+    return id;
+  } else if (options.id) {
+    return;
+  }
 
   var media_items = perform_photos_search(
     query,
@@ -32,10 +40,19 @@ function run(arguments) {
   return media_items.map((media_item) => media_item.id()).join("\n");
 }
 
+// returns true if the argument follows the pattern of a valid id
+function looks_like_an_id(possible_id) {
+  // /^[0-9a-fA-F]/.test(possible_id);
+  return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/.test(
+    possible_id
+  );
+}
+
 // returns either a valid Photos.app media id or false if none is found
 function is_valid_id(possible_id) {
   const media_item = Application("Photos").mediaItems.byId(possible_id);
-  return media_item.exists() && media_item.id();
+  if (!media_item.exists) false;
+  return media_item.id();
 }
 
 // query -> [ Photos.app media items ] or [] if no matches
