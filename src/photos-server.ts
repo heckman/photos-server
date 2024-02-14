@@ -23,9 +23,8 @@ const exe_export_photos = path.join(
 );
 
 // identifies the server's temporary directories
-const tmp_dir = tmpdir();
-// const tmp_dir = path.join("dev", "null");
-const tmp_dir_prefix = "photos-server-image_";
+const tmp_dir_root = tmpdir();
+const tmp_dir_prefix = "photos-server_item_";
 
 serve({
   port: port,
@@ -89,7 +88,7 @@ async function call_get_id(query: string): Promise<string> {
 
 // id -> filename  /  500 internal error (export failed)
 async function get_photo_file(id: string): Promise<string> {
-  const directory = path.join(tmp_dir, tmp_dir_prefix + id);
+  const directory = path.join(tmp_dir_root, tmp_dir_prefix + id);
   try {
     return await a_file_in(directory);
   } catch (e) {
@@ -108,7 +107,9 @@ async function get_photo_file(id: string): Promise<string> {
 
 // directory -> filename // Error (no file in directory or file not found)
 async function a_file_in(directory: string): Promise<string> {
-  const filename = (await readdir(directory))
+  const filename = (await readdir(directory, { withFileTypes: true }))
+    .filter((dirent) => dirent.isFile())
+    .map((dirent) => dirent.name)
     .filter((filename) => filename.match(/^[^.]/)) // ignore hidden files!
     .shift();
   if (!filename) throw new Error(`No non-hidden files in ${directory}`);
