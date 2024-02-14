@@ -8,9 +8,10 @@
 */
 function run(arguments) {
   [[query, ...ignored], options] = parse_options(arguments, {
-    id: true, // true = fail if the query does not match an id
+    id: false, // true = fail if the query does not match an id
     search: false, // true = search only: do not check for id match first
     all: false, // false = only return one id from the resultant search
+    full: false, // false = only return part of id up until first slash
     timeout: 0, // abort after this many seconds, 0 = never
     filter: "\\.(jpeg|jpg|heic)$", // when searching, only return
     // media items whose filename matches this case-insensitive regular
@@ -20,43 +21,53 @@ function run(arguments) {
 
   set_timeout(options.timeout); // to abort overly-broad searches
 
+  var media_items = [];
+  var media_item;
+
   if (
     !options.search &&
     looks_like_an_id(query) &&
-    (id = is_valid_id(query))
+    (media_item = get_item_by_id(query))
   ) {
-    return id;
-  } else if (options.id) {
-    return;
+    return get_id(media_item, options.full);
+  } else if (!options.id) {
+    media_items = get_items_by_search(
+      query,
+      new RegExp(options.filter, "i")
+    );
+    if (!media_items.length) {
+      return;
+    } else if (!options.all) {
+      return get_id(random_member_of(media_items), options.full);
+    } else {
+      return media_items
+        .map((media_item) => get_id(media_item, options.full))
+        .join("\n");
+    }
   }
+  return;
+}
 
-  var media_items = perform_photos_search(
-    query,
-    new RegExp(options.filter, "i")
-  );
-  if (!options.all && media_items.length > 0) {
-    media_items = [random_member_of(media_items)];
-  }
-  return media_items.map((media_item) => media_item.id()).join("\n");
+function get_id(media_item, full) {
+  return full ? media_item.id() : media_item.id().replace(/\/.*$/, "");
 }
 
 // returns true if the argument follows the pattern of a valid id
 function looks_like_an_id(possible_id) {
-  // /^[0-9a-fA-F]/.test(possible_id);
   return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/.test(
     possible_id
   );
 }
 
-// returns either a valid Photos.app media id or false if none is found
-function is_valid_id(possible_id) {
+// returns either a valid Photos.app media item or false if none is found
+function get_item_by_id(possible_id) {
   const media_item = Application("Photos").mediaItems.byId(possible_id);
   if (!media_item.exists) false;
-  return media_item.id();
+  return media_item;
 }
 
 // query -> [ Photos.app media items ] or [] if no matches
-function perform_photos_search(query, pattern = "") {
+function get_items_by_search(query, pattern = "") {
   return Application("Photos")
     .search({ for: query })
     .filter((item) => item.filename().match(pattern));
