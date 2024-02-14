@@ -30,30 +30,20 @@ const tmp_dir_prefix = "photos-server-image_";
 serve({
   port: port,
   async fetch(req) {
-    try {
-      const query = await get_query(new URL(req.url).pathname);
-      const photo_id = await get_photo_id(query);
-      const filename = await get_photo_file(photo_id);
-      return respond_with_photo(filename);
-    } catch (error: any) {
-      error = wrap_unknown_errors(error);
-      log("error", error);
-      return respond_with_error(error);
-    }
+    log(); // blank line to hightlight a new request
+    return get_query(new URL(req.url).pathname)
+      .then(get_photo_id)
+      .then(get_photo_file)
+      .then(respond_with_photo)
+      .catch(respond_with_error);
   },
 });
 
-function wrap_unknown_errors(error: any) {
-  return error.message?.match(/^[45][0-9][0-9]$/)
-    ? error
-    : new Error("500", { cause: error }); // unknown error
-}
-
 function log(message: string = "", obj: any = "") {
+  // const prefix = "[" + new Date().toISOString() + "]  ";
+  const prefix = "";
   console.log(
-    message
-      ? "[" + new Date().toISOString() + "]  " + message.padEnd(10)
-      : "",
+    message ? prefix + message.padEnd(10) : "",
     obj
       ? JSON.stringify(obj, Object.getOwnPropertyNames(obj), "\t")
       : ""
@@ -61,12 +51,12 @@ function log(message: string = "", obj: any = "") {
 }
 
 // url_path -> id  /  404 not found (no query or invalid URI)
-function get_query(url_path: string) {
-  log("path", url_path);
+async function get_query(url_path: string) {
+  log("url path", url_path);
   try {
     const query = decodeURI(url_path).slice(1); // drop leading slash
-    if (!query) throw new Error("No query");
     log("query", query);
+    if (!query) throw new Error("No query");
     return query;
   } catch (e) {
     throw new Error("404", { cause: e });
@@ -128,7 +118,7 @@ async function a_file_in(directory: string): Promise<string> {
 }
 
 // id, directory | side-effect: exports a photo from Photos.app
-function call_export_photo(
+async function call_export_photo(
   id: string,
   directory: string
 ): Promise<string> {
@@ -136,8 +126,11 @@ function call_export_photo(
   return call([exe_export_photos, id, directory]);
 }
 
-function respond_with_error(exception: Error): Response {
-  const status = Number(exception.message);
+function respond_with_error(error: Error): Response {
+  if (!error.message?.match(/^[45][0-9][0-9]$/))
+    error = new Error("500", { cause: error });
+  log("error", error);
+  const status = Number(error.message);
   return respond_with_photo(
     status < 500 ? missing_image : error_image,
     status
