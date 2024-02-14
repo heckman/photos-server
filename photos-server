@@ -61,49 +61,50 @@ do
 	| \
 	(
 		IFS= read -r request
-		search_term="$(echo "$request" | awk '{print $2}')"
-		search_term="${search_term#/}"
-			log '\n\n\n\n\n'
-			log 'request: %s\nsearch term: %s\n' "$request" "$search_term"
+		if test "${request#GET }" != "request"; then
+			search_term="$(echo "$request" | awk '{print $2}')"
+			search_term="${search_term#/}"
+				log '\n\n\n\n\n'
+				log 'request: %s\nsearch term: %s\n' "$request" "$search_term"
 
-		# make a new directory for each image served
-		# shellcheck disable=SC2030 # image_dir is a local variable
-		image_dir=$(mktemp --directory -p "$temp_dir" -t 'image')
-		# shellcheck disable=SC2064 # we want the dir name expanded now
-		trap "rm -rf '$image_dir'" EXIT
+			# make a new directory for each image served
+			# shellcheck disable=SC2030 # image_dir is a local variable
+			image_dir=$(mktemp --directory -p "$temp_dir" -t 'image')
+			# shellcheck disable=SC2064 # we want the dir name expanded now
+			trap "rm -rf '$image_dir'" EXIT
 
-			export_matching_photo "$search_term" "$image_dir"
+				export_matching_photo "$search_term" "$image_dir"
 
-			log 'exported from photos:%s\n' "$(ls "$image_dir")"
+				log 'exported from photos:%s\n' "$(ls "$image_dir")"
 
-		# start the response header, and set values for use later in the header
-		if size=$(stat -f'%z' "$image_dir"/*); then
-			printf '%s\n' 'HTTP/1.1 200 OK'
-			output_photo=found_photo
-			filename="$(basename "$(stat -f'%N' "$image_dir"/*)")"
-		else
-			printf '%s\n' 'HTTP/1.1 404 Not Found'
-			size=$(missing_photo_size)
-			output_photo=missing_photo
-			filename="missing.jpg"
+			# start the response header, and set values for use later in the header
+			if size=$(stat -f'%z' "$image_dir"/*); then
+				printf '%s\n' 'HTTP/1.1 200 OK'
+				output_photo=found_photo
+				filename="$(basename "$(stat -f'%N' "$image_dir"/*)")"
+			else
+				printf '%s\n' 'HTTP/1.1 404 Not Found'
+				size=$(missing_photo_size)
+				output_photo=missing_photo
+				filename="missing.jpg"
+			fi
+
+				log 'serving photo: %s\n' "$filename"
+
+			# print the rest of the header
+			# using a series of printf statements so they are easy to comment-out
+			printf '%s\n' 'Content-Type: image/jpeg'
+			printf '%s\n' "Content-Length: $size"
+			printf '%s\n' "Content-Disposition: inline; filename=\"$filename\""
+			# printf '%s\n' 'Cache-Control: private'
+			# printf '%s\n' 'Connection: Close'
+			printf '%s\n' 'Connection: keep-alive'
+			printf '%s\n' 'Accpet-Ranges: bytes'
+			printf '\n'
+
+			# write the contents of the image to the pipe
+			$output_photo
 		fi
-
-			log 'serving photo: %s\n' "$filename"
-
-		# print the rest of the header
-		# using a series of printf statements so they are easy to comment-out
-		printf '%s\n' 'Content-Type: image/jpeg'
-		printf '%s\n' "Content-Length: $size"
-		printf '%s\n' "Content-Disposition: inline; filename=\"$filename\""
-		# printf '%s\n' 'Cache-Control: private'
-		# printf '%s\n' 'Connection: Close'
-		printf '%s\n' 'Connection: keep-alive'
-		printf '%s\n' 'Accpet-Ranges: bytes'
-		printf '\n'
-
-		# write the contents of the image to the pipe
-		$output_photo
-
 	) >"$response_pipe"
 done
 }
