@@ -165,8 +165,12 @@ async function call(command: any[], options = {}): Promise<string> {
       command.map(quoted).join(" "),
       options,
       (error, stdout, stderr) => {
-        if (error) reject(error);
-        resolve(stdout.trim());
+        if (!error) {
+          resolve(stdout.trim());
+        } else {
+          error.cause = stderr.trim();
+          reject(error);
+        }
       }
     );
   });
