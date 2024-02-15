@@ -12,9 +12,9 @@ const port = 6330;
 // 1 for normal
 // 2 for verbose
 // 3 for debug--shows complete error contents
-const verbosity = 9;
+const verbosity = 9; // logged to console
 
-// to abort overly-broad photo searches, set to 0 for no timeout
+// timeout to abort overly-broad photo searches (0 for no timeout)
 const get_photo_id_timeout_seconds = 3;
 
 // external commands
