@@ -12,7 +12,7 @@ const port = 6330;
 // 1 for normal
 // 2 for verbose
 // 3 for debug--shows complete error contents
-const verbosity = 2;
+const verbosity = 9;
 
 // to abort overly-broad photo searches, set to 0 for no timeout
 const get_photo_id_timeout_seconds = 3;
@@ -86,7 +86,7 @@ async function get_photo_id(query: string): Promise<string> {
     });
 }
 
-// id -> filename  /  500 internal error (export failed)
+// id -> filename  (or throw 500: export failed)
 async function get_photo_file(id: string): Promise<string> {
   const directory = path.join(tmp_dir_root, tmp_dir_prefix + id);
   return a_file_in(directory).catch(() =>
@@ -105,6 +105,7 @@ async function get_photo_file(id: string): Promise<string> {
   );
 }
 
+// filename, [status] -> Response object
 function respond_with_photo(
   absolute_filename: string,
   status = 200
@@ -119,6 +120,8 @@ function respond_with_photo(
   });
 }
 
+// { message, cause } -> Response object
+// the message is expected to be an HTTP status code
 function respond_with_error(error: {
   message: string;
   cause?: any;
@@ -135,7 +138,7 @@ function respond_with_error(error: {
   return respond_with_photo(error_filenames[error.message], status);
 }
 
-// directory -> filename // Error (no file in directory or file not found)
+// directory -> filename  ( or throw { message, path } )
 async function a_file_in(directory: string): Promise<string> {
   return readdir(directory, { withFileTypes: true })
     .then((dir_entries: Dirent[]) => {
@@ -157,8 +160,8 @@ async function a_file_in(directory: string): Promise<string> {
     });
 }
 
-// exec Promise wrapper that first quotes all the arguments
-// note that the command+args are expected in an array
+// a promise wrapping a call to exec with quoted arguments
+// [command, args...], options -> stdout from command (or throw some error)
 async function call(command: any[], options = {}): Promise<string> {
   return new Promise((resolve, reject) => {
     exec(
@@ -176,17 +179,23 @@ async function call(command: any[], options = {}): Promise<string> {
   });
 }
 
-// wrap the text in ' after replacing all instances of ' with '"'"'
+// wrap the text in 's after replacing all instances of ' with '"'"'
+// raw text -> quoted text
 function quoted(text: string) {
   return "'" + String(text).replaceAll("'", "'\"'\"'") + "'";
 }
 
+// create a new custom error object
+// note that an Error object may be passed as a cause
+// status, cause, [error] -> error where message is an HTTP status code
 function http_error(status: number, cause: any, error?: any) {
   return new Error(String(status), {
     cause: error ? new Error(cause, { cause: error }) : cause,
   });
 }
 
+// verbosity-dependent logging to console
+// message, obj, level -> void  (and writes to stderr)
 function log(message: string = "", obj: any = "", level: number = 0) {
   // const prefix = "[" + new Date().toISOString() + "]  ";
   if (level >= verbosity) return;
