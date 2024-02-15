@@ -2,7 +2,8 @@
   "name": "photos-server",
   "module": "src/photos-server.ts",
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/node": "^20.11.19"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"

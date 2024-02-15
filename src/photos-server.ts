@@ -1,11 +1,18 @@
 import { serve } from "bun";
 import { mkdir, readdir } from "node:fs/promises";
+import { Dirent } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { exec } from "node:child_process";
 
 // server settings
 const port = 6330;
+
+// 0 for silent
+// 1 for normal
+// 2 for verbose
+// 3 for debug--shows complete error contents
+const verbosity = 2;
 
 // to abort overly-broad photo searches, set to 0 for no timeout
 const get_photo_id_timeout_seconds = 3;
@@ -31,91 +38,103 @@ serve({
   async fetch(req) {
     log(); // blank line to hightlight a new request
     return get_query(new URL(req.url).pathname)
+      .then(validate_query)
       .then(get_photo_id)
+      .then(validate_photo_id)
       .then(get_photo_file)
       .then(respond_with_photo)
       .catch(respond_with_error);
   },
 });
 
-function log(message: string = "", obj: any = "") {
+// url_path -> id  /  404 (invalid URI)
+async function get_query(url_path: string) {
+  try {
+    return decodeURI(url_path).slice(1);
+  } catch (e) {
+    log("error", e, 2);
+    throw http_error(404, `Poorly-formatted path: ${url_path}`, e);
+  }
+}
+async function validate_query(query: string): Promise<string> {
+  log("query", query);
+  if (!query) throw http_error(404, "No query");
+  return query;
+}
+
+// query -> id  /  500 (probably a timeout error)
+async function get_photo_id(query: string): Promise<string> {
+  return call([
+    exe_get_id,
+    "--timeout",
+    get_photo_id_timeout_seconds,
+    query,
+  ]).catch((e) => {
+    log("error", e, 2);
+    throw http_error(500, "ID search timed out", e);
+  });
+}
+
+async function validate_photo_id(id: string): Promise<string> {
+  log("id", id);
+  if (!id) throw http_error(404, "ID not found");
+  return id;
+}
+
+// id -> filename  /  500 internal error (export failed)
+async function get_photo_file(id: string): Promise<string> {
+  const directory = path.join(tmp_dir_root, tmp_dir_prefix + id);
+  return a_file_in(directory).catch(() =>
+    mkdir(directory, { recursive: true })
+      .then(() => call_export_photo(id, directory))
+      .then(() => {
+        return a_file_in(directory);
+      })
+      .catch((e) => {
+        log("error", e, 2);
+        throw http_error(500, "Export failed", e);
+      })
+  );
+}
+
+function log(message: string = "", obj: any = "", level: number = 0) {
   // const prefix = "[" + new Date().toISOString() + "]  ";
+  if (level >= verbosity) return;
   const prefix = "";
   console.log(
-    message ? prefix + message.padEnd(10) : "",
+    message ? prefix + message.toUpperCase().padStart(16) : "",
     obj
       ? JSON.stringify(obj, Object.getOwnPropertyNames(obj), "\t")
       : ""
   );
 }
 
-// url_path -> id  /  404 not found (no query or invalid URI)
-async function get_query(url_path: string) {
-  log("url path", url_path);
-  try {
-    const query = decodeURI(url_path).slice(1); // drop leading slash
-    log("query", query);
-    if (!query) throw new Error("No query");
-    return query;
-  } catch (e) {
-    throw new Error("404", { cause: e });
-  }
-}
-
-// query -> id  /  404 not found or 504 gateway timeout
-async function get_photo_id(query: string): Promise<string> {
-  const id = await call_get_id(query);
-  if (!id) throw new Error("404", { cause: new Error("ID not found") });
-  log("id", id);
-  return id;
-}
-
-// query -> id  /  500 (probably a timeout error)
-async function call_get_id(query: string): Promise<string> {
-  try {
-    return await call([
-      exe_get_id,
-      "--timeout",
-      get_photo_id_timeout_seconds,
-      query,
-    ]);
-  } catch (e) {
-    // probably a timeout issue
-    // but don't respond gateway timeout or the client might retry
-    throw new Error("500", { cause: e });
-  }
-}
-
-// id -> filename  /  500 internal error (export failed)
-async function get_photo_file(id: string): Promise<string> {
-  const directory = path.join(tmp_dir_root, tmp_dir_prefix + id);
-  try {
-    return await a_file_in(directory);
-  } catch (e) {
-    log("no files", directory);
-    try {
-      await mkdir(directory, { recursive: true });
-      await call_export_photo(id, directory);
-      return await a_file_in(directory);
-    } catch (e) {
-      throw new Error("500", {
-        cause: new Error("Export failed", { cause: e }),
-      });
-    }
-  }
+function http_error(status: number, cause: any, error?: any) {
+  return new Error(String(status), {
+    cause: error ? new Error(cause, { cause: error }) : cause,
+  });
 }
 
 // directory -> filename // Error (no file in directory or file not found)
 async function a_file_in(directory: string): Promise<string> {
-  const filename = (await readdir(directory, { withFileTypes: true }))
-    .filter((dirent) => dirent.isFile())
-    .map((dirent) => dirent.name)
-    .filter((filename) => filename.match(/^[^.]/)) // ignore hidden files!
-    .shift();
-  if (!filename) throw new Error(`No non-hidden files in ${directory}`);
-  const absolute_filename = path.join(directory, filename);
-  log("filename", absolute_filename);
-  return absolute_filename;
+  return readdir(directory, { withFileTypes: true })
+    .then((dir_entries: Dirent[]) => {
+      const filename = dir_entries
+        .filter((dirent) => dirent.isFile())
+        .map((dirent) => dirent.name)
+        .filter((filename) => filename.match(/^[^.]/)) // ignore hidden files!
+        .shift();
+      if (!filename)
+        throw { message: "no visible files", path: directory };
+      const absolute_filename = path.join(directory, filename);
+      log("found file", absolute_filename, 1);
+      return absolute_filename;
+    })
+    .catch((e: { path: string }) => {
+      log("error", e, 2);
+      log("no file in", e.path, 1);
+      throw e;
+    });
 }
 
 // id, directory | side-effect: exports a photo from Photos.app
@@ -123,19 +142,26 @@ async function call_export_photo(
   id: string,
   directory: string
 ): Promise<string> {
-  log("exporting", directory);
+  log("exporting to", directory, 1);
   return call([exe_export_photos, id, directory]);
 }
 
-function respond_with_error(error: Error): Response {
+function respond_with_error(error: {
+  message: string;
+  cause?: any;
+}): Response {
   if (!error.message?.match(/^[45][0-9][0-9]$/))
     error = new Error("500", { cause: error });
-  log("error", error);
-  const status = Number(error.message);
-  return respond_with_photo(
-    status < 500 ? missing_image : error_image,
-    status
+  log(
+    "error",
+    error.message + ": " + (error.cause?.message || error.cause)
   );
+  const status = Number(error.message);
+  return respond_with_photo(error_filename(status), status);
+}
+
+function error_filename(status: number): string {
+  return status < 500 ? missing_image : error_image;
 }
 
 function respond_with_photo(
