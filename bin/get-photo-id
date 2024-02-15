@@ -111,7 +111,7 @@ function set_timeout(seconds) {
     pid=$(ps -o ppid= $$)
     {
       sleep ${seconds}
-      kill $pid 2>/dev/null
+      kill $pid 2>/dev/null && echo "search timed out" >&2
     }&
   `);
   }
