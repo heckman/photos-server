@@ -17,11 +17,7 @@ const verbosity = 2;
 // to abort overly-broad photo searches, set to 0 for no timeout
 const get_photo_id_timeout_seconds = 3;
 
-// where resources are
-const assets_directory = path.join(__dirname, "..", "assets");
-const missing_image = path.join(assets_directory, "broken-image.svg");
-const error_image = path.join(assets_directory, "sad-mac.svg");
-
+// external commands
 const bin_directory = path.join(__dirname, "..", "bin");
 const exe_get_id = path.join(bin_directory, "get-photo-id");
 const exe_export_photos = path.join(
@@ -29,10 +25,18 @@ const exe_export_photos = path.join(
   "export-photos-by-id"
 );
 
+// stock images to return on errors
+const assets_directory = path.join(__dirname, "..", "assets");
+const error_filenames: { [key: string]: string } = {
+  404: path.join(assets_directory, "broken-image.svg"),
+  500: path.join(assets_directory, "sad-mac.svg"),
+};
+
 // identifies the server's temporary directories
 const tmp_dir_root = tmpdir();
 const tmp_dir_prefix = "photos-server_item_";
 
+// main
 serve({
   port: port,
   async fetch(req) {
@@ -40,15 +44,14 @@ serve({
     return get_query(new URL(req.url).pathname)
       .then(validate_query)
       .then(get_photo_id)
-      .then(validate_photo_id)
       .then(get_photo_file)
       .then(respond_with_photo)
       .catch(respond_with_error);
   },
 });
 
-// url_path -> id  /  404 (invalid URI)
-async function get_query(url_path: string) {
+// url_path -> id  (or throw 404: invalid URI
+async function get_query(url_path: string): Promise<string> {
   try {
     return decodeURI(url_path).slice(1);
   } catch (e) {
@@ -56,29 +59,31 @@ async function get_query(url_path: string) {
     throw http_error(404, `Poorly-formatted path: ${url_path}`, e);
   }
 }
+
+// query -> query  (or throw 404: empty query)
 async function validate_query(query: string): Promise<string> {
   log("query", query);
   if (!query) throw http_error(404, "No query");
   return query;
 }
 
-// query -> id  /  500 (probably a timeout error)
+// query -> id  (or throw 500: search timed out)
 async function get_photo_id(query: string): Promise<string> {
   return call([
     exe_get_id,
     "--timeout",
     get_photo_id_timeout_seconds,
     query,
-  ]).catch((e) => {
-    log("error", e, 2);
-    throw http_error(500, "ID search timed out", e);
-  });
-}
-
-async function validate_photo_id(id: string): Promise<string> {
-  log("id", id);
-  if (!id) throw http_error(404, "ID not found");
-  return id;
+  ])
+    .catch((e) => {
+      log("error", e, 2);
+      throw http_error(500, "ID search timed out", e);
+    })
+    .then((id) => {
+      log("id", id);
+      if (!id) throw http_error(404, "ID not found");
+      return id;
+    });
 }
 
 // id -> filename  /  500 internal error (export failed)
@@ -86,7 +91,10 @@ async function get_photo_file(id: string): Promise<string> {
   const directory = path.join(tmp_dir_root, tmp_dir_prefix + id);
   return a_file_in(directory).catch(() =>
     mkdir(directory, { recursive: true })
-      .then(() => call_export_photo(id, directory))
+      .then(() => {
+        log("exporting to", directory, 1);
+        return call([exe_export_photos, id, directory]);
+      })
       .then(() => {
         return a_file_in(directory);
       })
@@ -97,22 +105,34 @@ async function get_photo_file(id: string): Promise<string> {
   );
 }
 
-function log(message: string = "", obj: any = "", level: number = 0) {
-  // const prefix = "[" + new Date().toISOString() + "]  ";
-  if (level >= verbosity) return;
-  const prefix = "";
-  console.log(
-    message ? prefix + message.toUpperCase().padStart(16) : "",
-    obj
-      ? JSON.stringify(obj, Object.getOwnPropertyNames(obj), "\t")
-      : ""
-  );
+function respond_with_photo(
+  absolute_filename: string,
+  status = 200
+): Response {
+  const basename = path.basename(absolute_filename);
+  log("sending", basename);
+  return new Response(Bun.file(absolute_filename), {
+    status: status,
+    headers: {
+      "content-disposition": `inline; filename="${basename}"`,
+    },
+  });
 }
 
-function http_error(status: number, cause: any, error?: any) {
-  return new Error(String(status), {
-    cause: error ? new Error(cause, { cause: error }) : cause,
-  });
+function respond_with_error(error: {
+  message: string;
+  cause?: any;
+}): Response {
+  if (!error.message?.match(/^[45][0-9][0-9]$/)) {
+    error = http_error(500, "Unknown error", { cause: error });
+    log("error", error, 2);
+  }
+  log(
+    "http error",
+    error.message + ": " + (error.cause?.message || error.cause)
+  );
+  const status = Number(error.message);
+  return respond_with_photo(error_filenames[error.message], status);
 }
 
 // directory -> filename // Error (no file in directory or file not found)
@@ -137,47 +157,6 @@ async function a_file_in(directory: string): Promise<string> {
     });
 }
 
-// id, directory | side-effect: exports a photo from Photos.app
-async function call_export_photo(
-  id: string,
-  directory: string
-): Promise<string> {
-  log("exporting to", directory, 1);
-  return call([exe_export_photos, id, directory]);
-}
-
-function respond_with_error(error: {
-  message: string;
-  cause?: any;
-}): Response {
-  if (!error.message?.match(/^[45][0-9][0-9]$/))
-    error = new Error("500", { cause: error });
-  log(
-    "error",
-    error.message + ": " + (error.cause?.message || error.cause)
-  );
-  const status = Number(error.message);
-  return respond_with_photo(error_filename(status), status);
-}
-
-function error_filename(status: number): string {
-  return status < 500 ? missing_image : error_image;
-}
-
-function respond_with_photo(
-  absolute_filename: string,
-  status = 200
-): Response {
-  const basename = path.basename(absolute_filename);
-  log("sending", basename);
-  return new Response(Bun.file(absolute_filename), {
-    status: status,
-    headers: {
-      "content-disposition": `inline; filename="${basename}"`,
-    },
-  });
-}
-
 // exec Promise wrapper that first quotes all the arguments
 // note that the command+args are expected in an array
 async function call(command: any[], options = {}): Promise<string> {
@@ -196,4 +175,22 @@ async function call(command: any[], options = {}): Promise<string> {
 // wrap the text in ' after replacing all instances of ' with '"'"'
 function quoted(text: string) {
   return "'" + String(text).replaceAll("'", "'\"'\"'") + "'";
+}
+
+function http_error(status: number, cause: any, error?: any) {
+  return new Error(String(status), {
+    cause: error ? new Error(cause, { cause: error }) : cause,
+  });
+}
+
+function log(message: string = "", obj: any = "", level: number = 0) {
+  // const prefix = "[" + new Date().toISOString() + "]  ";
+  if (level >= verbosity) return;
+  const prefix = "";
+  console.log(
+    message ? prefix + message.toUpperCase().padStart(16) : "",
+    obj
+      ? JSON.stringify(obj, Object.getOwnPropertyNames(obj), "\t")
+      : ""
+  );
 }
