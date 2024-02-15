@@ -15,10 +15,10 @@ const assets_directory = path.join(__dirname, "..", "assets");
 const missing_image = path.join(assets_directory, "broken-image.svg");
 const error_image = path.join(assets_directory, "sad-mac.svg");
 
-const jxa_directory = path.join(__dirname, "..", "bin");
-const exe_get_id = path.join(jxa_directory, "get-photo-id");
+const bin_directory = path.join(__dirname, "..", "bin");
+const exe_get_id = path.join(bin_directory, "get-photo-id");
 const exe_export_photos = path.join(
-  jxa_directory,
+  bin_directory,
   "export-photos-by-id"
 );
 
