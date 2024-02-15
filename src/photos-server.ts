@@ -19,8 +19,8 @@ const get_photo_id_timeout_seconds = 3;
 
 // external commands
 const bin_directory = path.join(__dirname, "..", "bin");
-const exe_get_id = path.join(bin_directory, "get-photo-id");
-const exe_export_photos = path.join(
+const bin_get_id = path.join(bin_directory, "get-photo-id");
+const bin_export_photos = path.join(
   bin_directory,
   "export-photos-by-id"
 );
@@ -70,7 +70,7 @@ async function validate_query(query: string): Promise<string> {
 // query -> id  (or throw 500: search timed out)
 async function get_photo_id(query: string): Promise<string> {
   return call([
-    exe_get_id,
+    bin_get_id,
     "--timeout",
     get_photo_id_timeout_seconds,
     query,
@@ -93,7 +93,7 @@ async function get_photo_file(id: string): Promise<string> {
     mkdir(directory, { recursive: true })
       .then(() => {
         log("exporting to", directory, 1);
-        return call([exe_export_photos, id, directory]);
+        return call([bin_export_photos, id, directory]);
       })
       .then(() => {
         return a_file_in(directory);
