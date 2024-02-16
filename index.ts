@@ -44,7 +44,7 @@ const verbosity = 9; // logged to console
 const get_photo_id_timeout_seconds = 3;
 
 // external commands
-const bin_directory = path.join(__dirname, "..", "bin");
+const bin_directory = path.join(__dirname, "bin");
 const bin_get_id = path.join(bin_directory, "get-photo-id");
 const bin_export_photos = path.join(
   bin_directory,
@@ -52,7 +52,7 @@ const bin_export_photos = path.join(
 );
 
 // stock images to return on errors
-const assets_directory = path.join(__dirname, "..", "assets");
+const assets_directory = path.join(__dirname, "assets");
 const error_filenames: { [key: string]: string } = {
   404: path.join(assets_directory, "broken-image.svg"),
   500: path.join(assets_directory, "sad-mac.svg"),
