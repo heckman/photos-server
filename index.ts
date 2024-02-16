@@ -38,7 +38,7 @@ const port = 6330;
 // 1 for normal
 // 2 for verbose
 // 3 for debug--shows complete error contents
-const verbosity = 9; // logged to console
+const verbosity = 2; // logged to console
 
 // timeout to abort overly-broad photo searches (0 for no timeout)
 const get_photo_id_timeout_seconds = 3;
@@ -106,7 +106,7 @@ async function get_photo_id(query: string): Promise<string> {
       throw http_error(500, "ID search timed out", e);
     })
     .then((id) => {
-      log("id", id);
+      log("photo id", id);
       if (!id) throw http_error(404, "ID not found");
       return id;
     });
@@ -227,9 +227,9 @@ function log(message: string = "", obj: any = "", level: number = 0) {
   if (level >= verbosity) return;
   const prefix = "";
   console.log(
-    message ? prefix + message.toUpperCase().padStart(16) : "",
+    message ? prefix + message.toUpperCase().padStart(14) : "",
     obj
-      ? JSON.stringify(obj, Object.getOwnPropertyNames(obj), "\t")
+      ? JSON.stringify(obj, Object.getOwnPropertyNames(obj), "  ")
       : ""
   );
 }
