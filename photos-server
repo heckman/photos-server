@@ -8,316 +8,350 @@
 # if photos returns multiple photos a random one is selected
 # if there are no matches a default placeholder is returned
 
-PORT=6330
+host=127.0.0.1
+port=6330
 
-# items returned by Photos.app are filtered with this regex
+default_timeout_seconds=1
+
+app_id=ca.heckman.photos-server
+tcpserver_pid_file="${TMPDIR}${app_id}.tcpserver.pid"
+temp_dir=
+stdlog=/dev/stderr
 image_regex='/\.(jpeg|jpg|heic)$/i' # don't match movies
 
-# allocate a temporary directory
-temp_dir="$(mktemp --directory)"
-# shellcheck disable=SC2064 # it's a trap!
-trap "rm -rf '$temp_dir'" EXIT
-# put a pipe in it
-response_pipe="$temp_dir/pipe"
-mkfifo "$response_pipe"
+this_script="$(realpath "$0")"
 
-# print an id if there's a match, otherwise nothing.
-export_matching_photo(){ local search_term="$1" destination="$2"
+usage(){ echo "USAGE:
+
+photos-server command [args]
+
+	start [timeout]
+	stop
+	restart [timeout]
+	status
+		Commands to manage an HTTP server on port $port.
+
+	find <query>
+		Print id of random photo from a Photos.app search.
+
+	export <id> [<destination>]
+		Export a media item from Photos.app by id.
+
+	respond [timeout]
+		Respond to an HTTP request with a Photos.appmedia item,
+		specified by id, or a random photo from a search.
+		Do not run this from the command line.
+
+The argument timeout, measured in seconds, specifies how long to
+wait for Photos.app to return with results of a query. The default
+is $(pluralized seconds "$default_timeout_seconds"). Set to 0 to disable timeout.
+"; exit 69; }
+
+
+main(){ local cmd="$1";shift
+	case "$cmd" in
+		start) start "$@" ;;
+		stop) stop "$@" ;;
+		restart) restart "$@" ;;
+		status) status "$@" ;;
+		respond) generate_http_response "$@";;
+		find) get_photo_id "$@" ;;
+		export) export_photo_by_id "$@" ;;
+		*) usage ;;
+	esac
+}
+
+start(){
+	if is_running
+	then
+		echo "already running"
+		exit 1
+	else
+		log "tcpserver -v -RHl0 '$host' '$port' '$this_script' respond $*"
+		tcpserver -v -RHl0 "$host" "$port" "$this_script" respond "$@"&
+		echo $! > "$tcpserver_pid_file"
+		pause
+		status
+	fi
+}
+pause(){
+	sleep 0.5
+}
+stop(){
+	terminate_process
+	pause
+	status
+}
+
+restart(){
+	stop
+	pause
+	start "$@"
+}
+
+status(){
+	if is_running
+	then
+		echo "running (pid $(cat "$tcpserver_pid_file"))"
+	else
+		echo "stopped"
+	fi
+}
+
+terminate_process(){
+	test -f "$tcpserver_pid_file" || return
+	if pkill -F "$tcpserver_pid_file" 2>/dev/null
+	then
+		remove_pid_file
+		true
+		return
+	else
+		printf "invalid pid in pid file: " >&2
+		cat "$tcpserver_pid_file" >&2
+		echo "removing pid file: $tcpserver_pid_file" >&2
+		remove_pid_file
+		false
+		return
+	fi
+}
+
+is_running(){
+	if test -f "$tcpserver_pid_file"
+	then
+		if pgrep -F "$tcpserver_pid_file" >/dev/null
+		then
+			true
+			return
+		else
+			rm "$tcpserver_pid_file"
+		fi
+	fi
+	false
+}
+
+remove_pid_file(){
+	rm "$tcpserver_pid_file"
+}
+
+get_photo_id(){ local search_term="$1" timeout_seconds="${2:-$default_timeout_seconds}"
+	test -z "$search_term" && search_term="$(cat -)"
+	log 'search_term=%s\n' "$search_term"
+	if test "$timeout_seconds" != "0"
+	then
+		# shellcheck disable=SC2016
+		timeoutcode='
+			ObjC.import("stdlib");
+    		$.system(`
+				pid=$(ps -o ppid= $$)
+				{
+					sleep ${'"$timeout_seconds"'}
+					kill $pid 2>/dev/null \
+						&& echo "search timed out" >&2
+				}&
+			`)'
+	else
+		timeoutcode=""
+	fi
 	osascript -l JavaScript -e "
-	function export_photo(mediaItem){
-		Application('Photos').export([mediaItem],{to:Path('$destination')})
-	}
-	try {
-		export_photo(Application('Photos').mediaItems.byId('$search_term'))
-	} catch {
-		const matchingPhotos=Application('Photos')
-			.search({for:'$search_term'})
-			.filter(x=>x.filename().match($image_regex))
-		if (matchingPhotos.length){
-			export_photo(
+		$timeoutcode
+		const mediaItem=Application('Photos')
+			.mediaItems.byId('$search_term')
+		if(mediaItem.exists()){
+			mediaItem.id()
+		} else {
+			const matchingPhotos=Application('Photos')
+				.search({for:'$search_term'})
+				.filter(x=>x.filename().match($image_regex))
+			if (matchingPhotos.length){
 				matchingPhotos[
 					Math.floor(Math.random() * matchingPhotos.length)
-				]
-			)
-		}
-	}"
+				].id()
+			}
+		}"
 }
 
-# output to stderr
-log_to=/dev/stderr
-# log_to=/dev/null
+# print an id if there's a match, otherwise nothing.
+export_photo_by_id(){ local id="$1" destination="${2:-.}"
+	osascript -l JavaScript -e "
+	const photos=Application('Photos')
+	const mediaItem=Application('Photos').mediaItems.byId('$id')
+	Application('Photos').export([mediaItem],{to:Path('$destination')})
+"
+}
+
+make_temporary_directory(){ local photo_id="$1"
+	temp_dir="${TMPDIR}${app_id}-${photo_id}"
+	mkdir -p "$temp_dir"
+	# shellcheck disable=SC2064 # it's a trap! (expand now)
+	trap 'rm -rf "$temp_dir"' EXIT
+	echo "$temp_dir"
+}
+
+get_photo_filename(){ local dir="$1"
+	log "looking for file in: %s\n" "$dir"
+	find "$dir" -maxdepth 1 -type f ! -name '.*' 2>/dev/null
+}
+
+generate_http_response(){
+	local timeout_seconds="${1:-$default_timeout_seconds}"
+	query="$(
+		head -1 \
+		| awk -F '[ /]' '$1=="GET" {print $3}'
+	)"
+	log 'query=%s\n' "$query"
+	test -z "$query" && respond_with_http_error 404
+
+	photo_id="$(get_photo_id "$query" "$timeout_seconds")" \
+		|| respond_with_http_error 500
+	photo_id="${photo_id%%/*}"
+	log 'photo_id=%s\n' "$photo_id"
+	test -z "$photo_id" && respond_with_http_error 404
+
+	temp_dir="$(make_temporary_directory "$photo_id")"
+	log 'temp_dir=%s\n' "$temp_dir"
+
+	photo_filename="$(get_photo_filename "$temp_dir")"
+	log 'photo_filename=%s\n' "$photo_filename"
+	if test -z "$photo_filename"
+	then
+		log 'exporting photo\n'
+		export_photo_by_id "$photo_id" "$temp_dir"
+
+		photo_filename="$(get_photo_filename "$temp_dir")"
+		log 'photo_filename=%s\n' "$photo_filename"
+		test -z "$photo_filename" && respond_with_http_error 404
+	fi
+
+	respond_with_photo "$photo_filename"
+}
+
+get_photo_file(){ local dir="$1"
+	photo_filename="$(photo_filename "$dir")"
+	if test -z "$photo_filename"
+	then
+		photo_filename="$(photo_filename "$dir")"
+	fi
+	echo "$photo_filename"
+
+}
+
+respond_with_photo(){ filename=$1
+	log 'responding with photo: %s\n' "$(basename "$filename")"
+
+	file_size="$(stat -f'%z' "$photo_filename")"
+	file_type="$(file -b --mime-type "$photo_filename")"
+
+	print_http_image_header \
+		"200 OK" "$photo_filename" "$file_size" "$file_type"
+	echo
+	cat "$photo_filename"
+
+}
+respond_with_http_error(){ status="$1"
+	case "$status" in
+	404)
+		status="404 Not Found"
+		filename="missing.svg"
+		image_content="$missing_svg"
+		;;
+	*)
+		status="500 Internal Server Error"
+		filename="error.svg"
+		image_content="$error_svg"
+		;;
+	esac
+	file_size=${#image_content}
+	print_http_image_header \
+		"$status" "$filename" "$file_size" "svg+xml"
+	echo
+	echo "$image_content"
+	exit 0
+}
+
+print_http_image_header(){
+	status="$1"
+	filename="$2"
+	file_size="$3"
+	content_type="$4"
+	echo "HTTP/1.1 $status"
+	echo "Content-Disposition: inline; filename=\"$(basename "$filename")\""
+	echo "Content-Type: $content_type"
+	echo "Content-Length: $file_size"
+}
+
+missing_svg='<?xml version="1.0" encoding="UTF-8"?>
+<!-- old school pixellated netscape broken image icon -->
+<!--
+  source: https://gist.github.com/diachedelic/cbb7fdd2271afa52435b7d4185e6a4ad
+  accessed: 2024-02-12
+-->
+<svg viewBox="0 0 14 16" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <g id="borders-and-backgrounds">
+    <path d="M0,0 L10,0 L10,1 L1,1 L1,15 L2,15 L2,16 L0,16 Z" fill="black"></path>
+    <path d="M10,4 l4,0 l0,3 l-1,0 l0,-2 l-3,0 Z" fill="black"></path>
+    <path d="M14,16 l0,-6 l-1,0 l0,5 l-5,0 l0,1 Z" fill="black"></path>
+    <path d="M12,14 l0,-3 l-1,0 l0,2 l-2,0 l0,1 Z" fill="#bcbcc3"></path>
+    <path d="M10,0 l1,0 l0,1 l1,0 l0,1 l1,0 l0,1 l1,0 l0,1 l-1,0 l0,-1 l-1,0 l0,-1 l-1,0 l0,2 l-1,0 Z" fill="#878787">
+    </path>
+    <path d="M2,2 l8,0 l0,3 l2,0 l0,2 l-4,0 l0,5 l-2,0 l0,1 l-2,0 l0,1 l-2,0 Z" fill="#bcbcc3"></path>
+  </g>
+  <g id="lefteye">
+    <path d="M5,3 l2,0 l0,3 l-3,0 l0,-2 l1,0 l0,1 l1,0 l0,-1 l-1,0 Z" fill="#00891e"></path>
+    <path d="M5,4 l1,0 l0,1 l-1,0 Z" fill="#00f248"></path>
+    <path d="M7,4 l1,0 l0,2 l-1,0 l0,1 l-2,0 l0,-1 l2,0 Z" fill="black"></path>
+  </g>
+  <g id="righteye">
+    <path d="M8,7 l3,0 l0,2 l-1,0 l0,-1 l-1,0 l0,1 l1,0 l0,1 l-2,0 Z" fill="#0064fb"></path>
+    <path d="M9,8 l1,0 l0,1 l-1,0 Z" fill="#00fbfe"></path>
+    <path d="M10,9 l1,0 l0,1 l-1,0 Z" fill="#003293"></path>
+    <path d="M11,7 l1,0 l0,2 l-1,0 Z" fill="black"></path>
+    <path d="M8,10 l2,0 l0,1 l-2,0 Z" fill="black"></path>
+  </g>
+  <g id="mouth">
+    <path d="M3,8 l1,0 l0,1 l1,0 l0,1 l1,0 l0,1 l1,0 l0,1 l-1,0 l0,-1 l-1,0 l0,-1 l-1,0 l0,-1 l-1,0 Z" fill="#ff3900">
+    </path>
+    <path d="M3,9 l1,0 l0,1 l1,0 l0,1 l1,0 l0,1 l-3,0 Z" fill="#f73ae1"></path>
+    <path d="M3,12 l3,0 l0,1 l-3,0 Z" fill="black"></path>
+  </g>
+</svg>
+'
+error_svg='<?xml version="1.0" encoding="UTF-8"?>
+<!--
+hand-coded and shaded svg by Erik Ben Heckman https://erik.heckman.ca
+of the original "Sad Mac" icon by Susan Kare https://kareprints.com
+-->
+<svg viewBox="0 0 37 37" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <g id="shading">
+    <path id="mask" fill="#f4f4f4" d="
+    M6,4 h25 v26 h-25 z M7,3 h23 v32 h-23 zM8,2 h 21 v 2 h-21 z"></path>
+    <path id="screen" fill="#fafafa" d="
+    M10,6 h17 v14 h-17 Z"></path>
+    <path id="plinth" fill="#ddd" d="
+    M8,31 h21 v 3 h-21 Z"></path>
+  </g>
+  <path id="lines" fill-rule="evenodd" fill="black" d="
+    M6,4 h25 v26 h-25 z M7,3 h23 v32 h-23 z M8,2 h 21 v 2 h-21 z M8,31 h21 v 3 h-21 Z
+    M10,5 h17 v16 h-17 z M9,6 h19 v14 h-19 Z
+    M13,9 h1 v3 h-1 v-1 h3 v1 h-1 v-3 h1 v1 h-3 Z
+    M21,9 h1 v3 h-1 v-1 h3 v1 h-1 v-3 h1 v1 h-3 Z
+    M16,13 h1 v2 h2 v-2 h1 v1 h-4 Z
+    M16,16 h5 v2 h3 v1 h-1 v-2 h-8 v 1 h 1 Z
+    M9,26 h2 v1 h-2 Z
+    M21,25 h6 v1 h-6 Z"></path>
+</svg>
+'
+
 # shellcheck disable=SC2059
-log(){ if test -z "$1"; then cat - >$log_to; else printf "$@" >$log_to; fi; }
+log(){ if test -z "$1"; then cat - >$stdlog; else printf "$@" >$stdlog; fi; }
 
-# shellcheck disable=SC2094
-main()
-{
-log "image server listening on port $PORT"
-while true
-do
-	( cat "$response_pipe" ) \
-	| \
-	nc -6l "$PORT" \
-	| \
-	(
-		IFS= read -r request
-		if test "${request#GET }" != "request"; then
-			search_term="$(echo "$request" | awk '{print $2}')"
-			search_term="${search_term#/}"
-				log '\n\n\n\n\n'
-				log 'request: %s\nsearch term: %s\n' "$request" "$search_term"
-
-			# make a new directory for each image served
-			# shellcheck disable=SC2030 # image_dir is a local variable
-			image_dir=$(mktemp --directory -p "$temp_dir" -t 'image')
-			# shellcheck disable=SC2064 # we want the dir name expanded now
-			trap "rm -rf '$image_dir'" EXIT
-
-				export_matching_photo "$search_term" "$image_dir"
-
-				log 'exported from photos:%s\n' "$(ls "$image_dir")"
-
-			# start the response header, and set values for use later in the header
-			if size=$(stat -f'%z' "$image_dir"/*); then
-				printf '%s\n' 'HTTP/1.1 200 OK'
-				output_photo=found_photo
-				filename="$(basename "$(stat -f'%N' "$image_dir"/*)")"
-			else
-				printf '%s\n' 'HTTP/1.1 404 Not Found'
-				size=$(missing_photo_size)
-				output_photo=missing_photo
-				filename="missing.jpg"
-			fi
-
-				log 'serving photo: %s\n' "$filename"
-
-			# print the rest of the header
-			# using a series of printf statements so they are easy to comment-out
-			printf '%s\n' 'Content-Type: image/jpeg'
-			printf '%s\n' "Content-Length: $size"
-			printf '%s\n' "Content-Disposition: inline; filename=\"$filename\""
-			# printf '%s\n' 'Cache-Control: private'
-			# printf '%s\n' 'Connection: Close'
-			printf '%s\n' 'Connection: keep-alive'
-			printf '%s\n' 'Accpet-Ranges: bytes'
-			printf '\n'
-
-			# write the contents of the image to the pipe
-			$output_photo
-		fi
-	) >"$response_pipe"
-done
-}
-
-found_photo(){ cat "$image_dir"/*; }
-missing_photo_size(){ echo 11589;}
-missing_photo(){
-	echo "begin-base64 644 missing.jpg
-/9j/4QDoRXhpZgAATU0AKgAAAAgABgESAAMAAAABAAEAAAEaAAUAAAABAAAAVgEbAAUAAAABAAAA
-XgEoAAMAAAABAAIAAAITAAMAAAABAAEAAIdpAAQAAAABAAAAZgAAAAAAAACQAAAAAQAAAJAAAAAB
-AAiQAAAHAAAABDAyMjGRAQAHAAAABAECAwCShgAHAAAAEgAAAMygAAAHAAAABDAxMDCgAQADAAAA
-AQABAACgAgAEAAAAAQAAAdagAwAEAAAAAQAAAdKkBgADAAAAAQAAAAAAAAAAQVNDSUkAAABTY3Jl
-ZW5zaG90AAD/4g/QSUNDX1BST0ZJTEUAAQEAAA/AYXBwbAIQAABtbnRyUkdCIFhZWiAH6AABAAoA
-FQA7AC1hY3NwQVBQTAAAAABBUFBMAAAAAAAAAAAAAAAAAAAAAAAA9tYAAQAAAADTLWFwcGwAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABFkZXNjAAABUAAAAGJk
-c2NtAAABtAAABJxjcHJ0AAAGUAAAACN3dHB0AAAGdAAAABRyWFlaAAAGiAAAABRnWFlaAAAGnAAA
-ABRiWFlaAAAGsAAAABRyVFJDAAAGxAAACAxhYXJnAAAO0AAAACB2Y2d0AAAO8AAAADBuZGluAAAP
-IAAAAD5tbW9kAAAPYAAAACh2Y2dwAAAPiAAAADhiVFJDAAAGxAAACAxnVFJDAAAGxAAACAxhYWJn
-AAAO0AAAACBhYWdnAAAO0AAAACBkZXNjAAAAAAAAAAhEaXNwbGF5AAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA
-AAAAAAAAbWx1YwAAAAAAAAAmAAAADGhySFIAAAAUAAAB2GtvS1IAAAAMAAAB7G5iTk8AAAASAAAB
-+GlkAAAAAAASAAACCmh1SFUAAAAUAAACHGNzQ1oAAAAWAAACMGRhREsAAAAcAAACRm5sTkwAAAAW
-AAACYmZpRkkAAAAQAAACeGl0SVQAAAAYAAACiGVzRVMAAAAWAAACoHJvUk8AAAASAAACtmZyQ0EA
-AAAWAAACyGFyAAAAAAAUAAAC3nVrVUEAAAAcAAAC8mhlSUwAAAAWAAADDnpoVFcAAAAKAAADJHZp
-Vk4AAAAOAAADLnNrU0sAAAAWAAADPHpoQ04AAAAKAAADJHJ1UlUAAAAkAAADUmVuR0IAAAAUAAAD
-dmZyRlIAAAAWAAADim1zAAAAAAASAAADoGhpSU4AAAASAAADsnRoVEgAAAAMAAADxGNhRVMAAAAY
-AAAD0GVuQVUAAAAUAAADdmVzWEwAAAASAAACtmRlREUAAAAQAAAD6GVuVVMAAAASAAAD+HB0QlIA
-AAAYAAAECnBsUEwAAAASAAAEImVsR1IAAAAiAAAENHN2U0UAAAAQAAAEVnRyVFIAAAAUAAAEZnB0
-UFQAAAAWAAAEemphSlAAAAAMAAAEkABMAEMARAAgAHUAIABiAG8AagBpzuy37AAgAEwAQwBEAEYA
-YQByAGcAZQAtAEwAQwBEAEwAQwBEACAAVwBhAHIAbgBhAFMAegDtAG4AZQBzACAATABDAEQAQgBh
-AHIAZQB2AG4A/QAgAEwAQwBEAEwAQwBEAC0AZgBhAHIAdgBlAHMAawDmAHIAbQBLAGwAZQB1AHIA
-ZQBuAC0ATABDAEQAVgDkAHIAaQAtAEwAQwBEAEwAQwBEACAAYQAgAGMAbwBsAG8AcgBpAEwAQwBE
-ACAAYQAgAGMAbwBsAG8AcgBMAEMARAAgAGMAbwBsAG8AcgBBAEMATAAgAGMAbwB1AGwAZQB1AHIg
-DwBMAEMARAAgBkUGRAZIBkYGKQQaBD4EOwRMBD4EQAQ+BDIEOAQ5ACAATABDAEQgDwBMAEMARAAg
-BeYF0QXiBdUF4AXZX2mCcgBMAEMARABMAEMARAAgAE0A4AB1AEYAYQByAGUAYgBuAP0AIABMAEMA
-RAQmBDIENQRCBD0EPgQ5ACAEFgQaAC0ENAQ4BEEEPwQ7BDUEOQBDAG8AbABvAHUAcgAgAEwAQwBE
-AEwAQwBEACAAYwBvAHUAbABlAHUAcgBXAGEAcgBuAGEAIABMAEMARAkwCQIJFwlACSgAIABMAEMA
-RABMAEMARAAgDioONQBMAEMARAAgAGUAbgAgAGMAbwBsAG8AcgBGAGEAcgBiAC0ATABDAEQAQwBv
-AGwAbwByACAATABDAEQATABDAEQAIABDAG8AbABvAHIAaQBkAG8ASwBvAGwAbwByACAATABDAEQD
-iAOzA8cDwQPJA7wDtwAgA78DuAPMA70DtwAgAEwAQwBEAEYA5AByAGcALQBMAEMARABSAGUAbgBr
-AGwAaQAgAEwAQwBEAEwAQwBEACAAYQAgAGMAbwByAGUAczCrMOkw/ABMAEMARHRleHQAAAAAQ29w
-eXJpZ2h0IEFwcGxlIEluYy4sIDIwMjQAAFhZWiAAAAAAAADzUQABAAAAARbMWFlaIAAAAAAAAIPf
-AAA9v////7tYWVogAAAAAAAASr8AALE3AAAKuVhZWiAAAAAAAAAoOAAAEQsAAMi5Y3VydgAAAAAA
-AAQAAAAABQAKAA8AFAAZAB4AIwAoAC0AMgA2ADsAQABFAEoATwBUAFkAXgBjAGgAbQByAHcAfACB
-AIYAiwCQAJUAmgCfAKMAqACtALIAtwC8AMEAxgDLANAA1QDbAOAA5QDrAPAA9gD7AQEBBwENARMB
-GQEfASUBKwEyATgBPgFFAUwBUgFZAWABZwFuAXUBfAGDAYsBkgGaAaEBqQGxAbkBwQHJAdEB2QHh
-AekB8gH6AgMCDAIUAh0CJgIvAjgCQQJLAlQCXQJnAnECegKEAo4CmAKiAqwCtgLBAssC1QLgAusC
-9QMAAwsDFgMhAy0DOANDA08DWgNmA3IDfgOKA5YDogOuA7oDxwPTA+AD7AP5BAYEEwQgBC0EOwRI
-BFUEYwRxBH4EjASaBKgEtgTEBNME4QTwBP4FDQUcBSsFOgVJBVgFZwV3BYYFlgWmBbUFxQXVBeUF
-9gYGBhYGJwY3BkgGWQZqBnsGjAadBq8GwAbRBuMG9QcHBxkHKwc9B08HYQd0B4YHmQesB78H0gfl
-B/gICwgfCDIIRghaCG4IggiWCKoIvgjSCOcI+wkQCSUJOglPCWQJeQmPCaQJugnPCeUJ+woRCicK
-PQpUCmoKgQqYCq4KxQrcCvMLCwsiCzkLUQtpC4ALmAuwC8gL4Qv5DBIMKgxDDFwMdQyODKcMwAzZ
-DPMNDQ0mDUANWg10DY4NqQ3DDd4N+A4TDi4OSQ5kDn8Omw62DtIO7g8JDyUPQQ9eD3oPlg+zD88P
-7BAJECYQQxBhEH4QmxC5ENcQ9RETETERTxFtEYwRqhHJEegSBxImEkUSZBKEEqMSwxLjEwMTIxND
-E2MTgxOkE8UT5RQGFCcUSRRqFIsUrRTOFPAVEhU0FVYVeBWbFb0V4BYDFiYWSRZsFo8WshbWFvoX
-HRdBF2UXiReuF9IX9xgbGEAYZRiKGK8Y1Rj6GSAZRRlrGZEZtxndGgQaKhpRGncanhrFGuwbFBs7
-G2MbihuyG9ocAhwqHFIcexyjHMwc9R0eHUcdcB2ZHcMd7B4WHkAeah6UHr4e6R8THz4faR+UH78f
-6iAVIEEgbCCYIMQg8CEcIUghdSGhIc4h+yInIlUigiKvIt0jCiM4I2YjlCPCI/AkHyRNJHwkqyTa
-JQklOCVoJZclxyX3JicmVyaHJrcm6CcYJ0kneierJ9woDSg/KHEooijUKQYpOClrKZ0p0CoCKjUq
-aCqbKs8rAis2K2krnSvRLAUsOSxuLKIs1y0MLUEtdi2rLeEuFi5MLoIuty7uLyQvWi+RL8cv/jA1
-MGwwpDDbMRIxSjGCMbox8jIqMmMymzLUMw0zRjN/M7gz8TQrNGU0njTYNRM1TTWHNcI1/TY3NnI2
-rjbpNyQ3YDecN9c4FDhQOIw4yDkFOUI5fzm8Ofk6Njp0OrI67zstO2s7qjvoPCc8ZTykPOM9Ij1h
-PaE94D4gPmA+oD7gPyE/YT+iP+JAI0BkQKZA50EpQWpBrEHuQjBCckK1QvdDOkN9Q8BEA0RHRIpE
-zkUSRVVFmkXeRiJGZ0arRvBHNUd7R8BIBUhLSJFI10kdSWNJqUnwSjdKfUrESwxLU0uaS+JMKkxy
-TLpNAk1KTZNN3E4lTm5Ot08AT0lPk0/dUCdQcVC7UQZRUFGbUeZSMVJ8UsdTE1NfU6pT9lRCVI9U
-21UoVXVVwlYPVlxWqVb3V0RXklfgWC9YfVjLWRpZaVm4WgdaVlqmWvVbRVuVW+VcNVyGXNZdJ114
-XcleGl5sXr1fD19hX7NgBWBXYKpg/GFPYaJh9WJJYpxi8GNDY5dj62RAZJRk6WU9ZZJl52Y9ZpJm
-6Gc9Z5Nn6Wg/aJZo7GlDaZpp8WpIap9q92tPa6dr/2xXbK9tCG1gbbluEm5rbsRvHm94b9FwK3CG
-cOBxOnGVcfByS3KmcwFzXXO4dBR0cHTMdSh1hXXhdj52m3b4d1Z3s3gReG54zHkqeYl553pGeqV7
-BHtje8J8IXyBfOF9QX2hfgF+Yn7CfyN/hH/lgEeAqIEKgWuBzYIwgpKC9INXg7qEHYSAhOOFR4Wr
-hg6GcobXhzuHn4gEiGmIzokziZmJ/opkisqLMIuWi/yMY4zKjTGNmI3/jmaOzo82j56QBpBukNaR
-P5GokhGSepLjk02TtpQglIqU9JVflcmWNJaflwqXdZfgmEyYuJkkmZCZ/JpomtWbQpuvnByciZz3
-nWSd0p5Anq6fHZ+Ln/qgaaDYoUehtqImopajBqN2o+akVqTHpTilqaYapoum/adup+CoUqjEqTep
-qaocqo+rAqt1q+msXKzQrUStuK4trqGvFq+LsACwdbDqsWCx1rJLssKzOLOutCW0nLUTtYq2AbZ5
-tvC3aLfguFm40blKucK6O7q1uy67p7whvJu9Fb2Pvgq+hL7/v3q/9cBwwOzBZ8Hjwl/C28NYw9TE
-UcTOxUvFyMZGxsPHQce/yD3IvMk6ybnKOMq3yzbLtsw1zLXNNc21zjbOts83z7jQOdC60TzRvtI/
-0sHTRNPG1EnUy9VO1dHWVdbY11zX4Nhk2OjZbNnx2nba+9uA3AXcit0Q3ZbeHN6i3ynfr+A24L3h
-ROHM4lPi2+Nj4+vkc+T85YTmDeaW5x/nqegy6LzpRunQ6lvq5etw6/vshu0R7ZzuKO6070DvzPBY
-8OXxcvH/8ozzGfOn9DT0wvVQ9d72bfb794r4Gfio+Tj5x/pX+uf7d/wH/Jj9Kf26/kv+3P9t//9w
-YXJhAAAAAAADAAAAAmZmAADypwAADVkAABPQAAAKW3ZjZ3QAAAAAAAAAAQABAAAAAAAAAAEAAAAB
-AAAAAAAAAAEAAAABAAAAAAAAAAEAAG5kaW4AAAAAAAAANgAArhQAAFHsAABD1wAAsKQAACZmAAAP
-XAAAUA0AAFQ5AAIzMwACMzMAAjMzAAAAAAAAAABtbW9kAAAAAAAABhAAAKBQ/WJtYgAAAAAAAAAA
-AAAAAAAAAAAAAAAAdmNncAAAAAAAAwAAAAJmZgADAAAAAmZmAAMAAAACZmYAAAACMzM0AAAAAAIz
-MzQAAAAAAjMzNAD/2wCEABwcHBwcHDAcHDBEMDAwRFxEREREXHRcXFxcXHSMdHR0dHR0jIyMjIyM
-jIyoqKioqKjExMTExNzc3Nzc3Nzc3NwBIiQkODQ4YDQ0YOacgJzm5ubm5ubm5ubm5ubm5ubm5ubm
-5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5ubm5v/dAAQAGf/AABEIAZABkAMBIgACEQEDEQH/
-xAGiAAABBQEBAQEBAQAAAAAAAAAAAQIDBAUGBwgJCgsQAAIBAwMCBAMFBQQEAAABfQECAwAEEQUS
-ITFBBhNRYQcicRQygZGhCCNCscEVUtHwJDNicoIJChYXGBkaJSYnKCkqNDU2Nzg5OkNERUZHSElK
-U1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6g4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4
-ubrCw8TFxsfIycrS09TV1tfY2drh4uPk5ebn6Onq8fLz9PX29/j5+gEAAwEBAQEBAQEBAQAAAAAA
-AAECAwQFBgcICQoLEQACAQIEBAMEBwUEBAABAncAAQIDEQQFITEGEkFRB2FxEyIygQgUQpGhscEJ
-IzNS8BVictEKFiQ04SXxFxgZGiYnKCkqNTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1
-dnd4eXqCg4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY
-2dri4+Tl5ufo6ery8/T19vf4+fr/2gAMAwEAAhEDEQA/AOkooooAKKKZJJHEm+QhVFAD6ilnhgGZ
-WC1gXWsO/wAlsNo9e9YrMznc5yfegDpZNat14jUt+gqm2tzH7kaj68/4Vi0UAa39s3fon5Un9s3f
-ov5VlUUAav8AbN36L+VH9s3fov5VlUUAav8AbN36L+VH9s3fov5VlUUAav8AbN36L+VH9s3fov5V
-lUUAav8AbN36L+VH9s3fov5VlUUAav8AbN36L+VH9s3fov5VlUUAav8AbN36L+VH9s3fov5VlUUA
-av8AbN36L+VH9s3fov5VlUUAav8AbN36L+VH9s3fov5VlUUAav8AbN36L+VH9s3fov5VlUUAav8A
-bN36L+VH9s3fov5VlUUAav8AbN36L+VH9s3fov5VlUUAav8AbN36L+VH9s3fov5VlUUAav8AbN36
-L+VH9s3fov5VlUUAav8AbN36L+VH9s3fov5VlUUAav8AbN36L+VH9s3fov5VlUUAav8AbN36L+VL
-/bN36J+VZNFAG0mtzD78an6cVcj1q3biRSn6iuZooA7qKeGYZiYN9KlrgVZkIZDgj0ratdYdMJcj
-cPUdaAOkopkckcqB4yCp9KfQAUUUUAf/0OkoopkkiRRmR+FUUARXNxHaxeZJ+A9a5K6u5bp90h4H
-Rewou7p7uXe3AH3R6CqtABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAU
-UUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFAFq1u5bR90Z47r2NdbbX
-Ed1EJI/xHpXEVatLp7SUOvTuPUUAdrRTI5EljEkfKkcU+gD/0ekrm9Yut7i2TovX61vzyiCFpT/C
-K4ZmLsXbqeaAEooooAKKKKACiilVWY7VGT6CgBKKtCxvCOIm/LFO/s+8/wCeRoAp0Vc/s+8/55Gj
-+z7z/nkaAKdFXP7PvP8AnkaP7PvP+eRoAp0Vc/s+8/55Gj+z7z/nkaAKdFXP7PvP+eRo/s+8/wCe
-RoAp0Vc/s+8/55Gj+z7z/nkaAKdFXP7PvP8AnkaP7PvP+eRoAp0Vc/s+8/55Gj+z7z/nkaAKdFXP
-7PvP+eRo/s+8/wCeRoAp0Vc/s+8/55Gj+z7z/nkaAKdFXP7PvP8AnkaP7PvP+eRoAp0Vc/s+8/55
-Gj+z7z/nkaAKdFXP7PvP+eRo/s+8/wCeRoAp0Vc/s+8/55Gj+z7z/nkaAKdFXP7PvP8AnkaP7PvP
-+eRoAp0Vc/s+8/55Gj+z7z/nkaAKdFXP7PvP+eRppsbxR/qm/AUAVaKVlZDtYYPoaSgAooooAKKK
-KANvR7rY/wBmbo33frXSVwKMUYOvBHIruYJRNCko/iFAH//St61Jtt1jH8R/QVzNbWttmaNPRc/n
-/wDqrFoAKKKKACiilVSzBV6ngUAX7Cwa7bc3yxjqf6CuqhgigXZEoUUQQrBEsSdFFS0AFFFFABRR
-RQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFF
-ABRRRQBFNBFOuyVQRXK39g1o25eYz0Pp7V19RTwrPE0TdCKAOFopWUqxU9RxSUAFFFFABXTaLJut
-2j/uH9DXM1taI2JnT1XP5UAf/9OLWf8Aj7H+4Kya1dZ/4+x/uisqgAooooAKtWIBvIh/tD9Kq1c0
-/wD4/IvrQB2dFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAF
-FFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFAHFXwC3koH96qtXL/AP4/JfrVOgAooooAK1tG/wCP
-s/7h/pWTWro3/H3/AMBP9KAP/9SHWf8Aj7H+6Kyq1dZ/4+x/uisqgAooooAKuaf/AMfkX1qnVzT/
-APj8i+tAHZ0UUUAFFFFABRRSEqo3McAUALRWNPrMEfywjefXoKz21m7P3Qq/hQB1NFcqusXY67T+
-H+FX4Naib5Z12e45FAG3RTUdJFDIQQfSnUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRR
-QAUUUUAFFFFABRRRQAUUUUAFFFFAHGX/APx+S/WqdXL/AP4/JfrVOgAooooAK1dG/wCPv/gJ/pWV
-Wro3/H3/AMBP9KAP/9WHWf8Aj7H+6Kyq1dZ/4+x/uisqgAooooAKuaf/AMfkX1qnVzT/APj8i+tA
-HZ0UUUAFFFFADJJEhjMjnCqK5G8vpbtsfdQdFq5rFyXkFsv3U6/X/wCtWLQAUUUUAFFFFAFu0vJb
-R8pyp6r2rr4Jo7iISx9DXC1q6TcmGfyW+7Jx+PagDqqKKKACiiigAooooAKKKKACiiigAooooAKK
-KKACiiigAooooAKKKKACiiigAooooAKKKKAOMv8A/j8l+tU6uX//AB+S/WqdABRRRQAVq6N/x9/8
-BP8ASsqtXRv+Pv8A4Cf6UAf/1odZ/wCPsf7orKrV1n/j7H+6KyqACiiigAq5p/8Ax+RfWqdXNP8A
-+PyL60AdnRRRQAUhwBmlqOX/AFTAehoA4eRzJI0h/iOaZRRQAUUUUAFFFFABSglSCOMUlFAHeRP5
-kayf3gDT6rWf/HpF/uD+VWaACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiii
-gAooooAKKKKAOMv/APj8l+tU6uX/APx+S/WqdABRRRQAVq6N/wAff/AT/SsqtXRv+Pv/AICf6UAf
-/9eHWf8Aj7H+6Kyq1dZ/4+x/uisqgAooooAKuaf/AMfkX1qnVzT/APj8i+tAHZ0UUUAFFFFAHC3E
-XkzPEf4Tj8KiroNYtCcXSDpw39DXP0AFFFFABRRRQAU5EMjrGvUnAptbej2m5/tTjheF+tAHRIoR
-Ag6AY/KnUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUA
-cZf/APH5L9ap1cv/APj8l+tU6ACiiigArV0b/j7/AOAn+lZVaujf8ff/AAE/0oA//9CHWf8Aj7H+
-6Kyq1dZ/4+x/uisqgAooooAKuaf/AMfkX1qnVzT/APj8i+tAHZ0UUUAFFFFACEAjB6VzN9pbwky2
-43J6dx/9aunooA4Ciuyn0+1uOWXB9V4rObQ1/glx9RQBz1FdAuhj+KX8hWhBptpByF3H1bn/AOtQ
-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
-/wDj8l+tU6ACiiigArV0b/j7/wCAn+lZVaujf8ff/AT/AEoA/9OHWf8Aj7H+6Kyq1tZ/4+x/uCsm
-gAooooAKmtpRBOspGdvOKhooAsXNzLdPvkP0HYVXoooAKKKKACiiigAopyIzsEQZJ6AV09hpi2+J
-Zvmft6CgCpYaVnE10Pov+NdCAAMCiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACi
-iigAooooAKKKKACiiigAooooAKKKKAOMv/8Aj8l+tU6tXxBvJcf3sflVWgAooooAK1dG/wCPv/gJ
-/pWVWto3/H2f9w/0oA//1E1tMTRv6rj8qxa6bWo91usg/gP6GuZoAKKKKACiiigAooooAKKKKACp
-oLeW4fy4hk/oKms7KW7fC8KOrV1lvbRW0flxDH9aAILOxitF45fu3+FXqKKACiiigAooooAKKKKA
-CiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKKKKACiiigAooooAKinmWCJpW6KKJp4oF
-3SsFFcrf37XbbV4jXoKAKDMWYsep5pKKKACiiigAra0RMzO/ouPz/wD1Vi102ix7bdpP7x/QUAf/
-1d+eITQtEf4hiuGZSjFGGCOK76ub1i12OLlBw3B+tAGJRRRQAUUUUAFFFFABRRRQBZS9uo1Co5UD
-sOKf9vvP+epqnRQBc+33n/PU0fb7z/nqap0UAXPt95/z1NH2+8/56mqdFAFz7fef89TR9vvP+epq
-nRQBc+33n/PU0fb7z/nqap0UAXPt95/z1NH2+8/56mqdFAFz7fef89TR9vvP+epqnRQBc+33n/PU
-0fb7z/nqap0UAXPt95/z1NH2+8/56mqdFAFz7fef89TR9vvP+epqnRQBc+33n/PU0fb7z/nqap0U
-AXPt95/z1NH2+8/56mqdFAFz7fef89TR9vvP+epqnRQBc+33n/PU0fb7z/nqap0UAXPt95/z1NH2
-+8/56mqdFAFz7fef89TTTfXhGPNb8OKq0UAKzMxyxyaSiigAooooAKKKKAFRS7BFHJ4FdzBEIIUi
-H8IxWBo9rvf7Sw4XhfrXSUAf/9bpKZJGksZjcZUjFPooA4q7tXtJTG3T+E+oqrXb3FtFdR+XIPof
-SuSurSW0fa447HsaAKtFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQ
-AUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFFFFABRRRQAUUUUAFWrS1e6lEa8DufQUWtpLdv
-tjGAOp7CuttraK1j8uIfU+tAEscaRRiOMYVRgU+iigD/1+kooooAKZJHHKnlyAFT2p9FAHN3Wjun
-zW3zD+73rFZGQ7XGCOxrvqilghmGJUDUAcLRXTSaLbt/q2KfqKptokw+46n68UAYtFa39jXfqn5/
-/WpP7Gu/9n8//rUAZVFav9jXf+z+f/1qP7Gu/wDZ/P8A+tQBlUVq/wBjXf8As/n/APWo/sa7/wBn
-8/8A61AGVRWr/Y13/s/n/wDWo/sa7/2fz/8ArUAZVFav9jXf+z+f/wBaj+xrv/Z/P/61AGVRWr/Y
-13/s/n/9aj+xrv8A2fz/APrUAZVFav8AY13/ALP5/wD1qP7Gu/8AZ/P/AOtQBlUVq/2Nd/7P5/8A
-1qP7Gu/9n8//AK1AGVRWr/Y13/s/n/8AWo/sa7/2fz/+tQBlUVq/2Nd/7P5//Wo/sa7/ANn8/wD6
-1AGVRWr/AGNd/wCz+f8A9aj+xrv/AGfz/wDrUAZVFav9jXf+z+f/ANaj+xrv/Z/P/wCtQBlUVq/2
-Nd/7P5//AFqP7Gu/9n8//rUAZVFav9jXf+z+f/1qP7Gu/wDZ/P8A+tQBlUVq/wBjXf8As/n/APWo
-/sa7/wBn8/8A61AGVRWr/Y13/s/n/wDWo/sa7/2fz/8ArUAZVFav9jXf+z+f/wBal/sa79U/P/61
-AGTRW0miTH77qPpz/hVyPRbdf9Yxb9BQBzSozkKgyfQVtWuju+GuflH90da34oIYBiJAv0qWgBkc
-ccSCOMBVHYU+iigAooooA//Z
-====" | uudecode -mp
+pluralized(){ local term="$1" number="$2"
+	if test "$number" = "1"
+	then
+		printf '%d second' "$number"
+	else
+		printf '%d seconds' "$number"
+	fi
 }
 
 main "$@"
+
