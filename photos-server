@@ -4,9 +4,11 @@
 #
 # serves photos from Photos.app
 
-# listens on a port for a search term and returns a photo from the photos app
-# if photos returns multiple photos a random one is selected
-# if there are no matches a default placeholder is returned
+# Listens on a port for a query, and forwards it to Apple Photos.
+# If the query is the id of a media item in the Photos library,
+# that media item is returned. Otherwise Photos performs a search,
+# the responses are limited to photos, and one of the results,
+# randomly selected, is returned.
 
 host=127.0.0.1
 port=6330
@@ -15,11 +17,19 @@ default_timeout_seconds=1
 
 app_id=ca.heckman.photos-server
 tcpserver_pid_file="${TMPDIR}${app_id}.tcpserver.pid"
-temp_dir=
 stdlog=/dev/stderr
-image_regex='/\.(jpeg|jpg|heic)$/i' # don't match movies
 
-this_script="$(realpath "$0")"
+this_script="$(realpath "$0")" #should be good enough for now
+this_dir="$(dirname "$this_script")"
+tcpserver_options="-v -RHl0" # this will undergo whitespace splitting
+
+bin_find_photo="$this_dir/bin/get-photo-id"
+bin_export_photo="$this_dir/bin/export-photos-by-id"
+
+bin_timeout="$(which timeout)" || {
+	echo "Requires GNU timeout, install with 'brew install coreutils'"
+	exit 1
+}
 
 usage(){ echo "USAGE:
 
@@ -31,16 +41,10 @@ photos-server command [args]
 	status
 		Commands to manage an HTTP server on port $port.
 
-	find <query>
-		Print id of random photo from a Photos.app search.
-
-	export <id> [<destination>]
-		Export a media item from Photos.app by id.
-
 	respond [timeout]
-		Respond to an HTTP request with a Photos.appmedia item,
-		specified by id, or a random photo from a search.
-		Do not run this from the command line.
+		Reads an HTTP request from stdin and responds with an HTTP
+		resonse comprised of response headers and binary image
+		data. Do not run this from the command line.
 
 The argument timeout, measured in seconds, specifies how long to
 wait for Photos.app to return with results of a query. The default
@@ -48,47 +52,35 @@ is $(pluralized seconds "$default_timeout_seconds"). Set to 0 to disable timeout
 "; exit 69; }
 
 
-main(){ local cmd="$1";shift
+main(){ local cmd="$1"; shift
 	case "$cmd" in
 		start) start "$@" ;;
 		stop) stop "$@" ;;
 		restart) restart "$@" ;;
 		status) status "$@" ;;
-		respond) generate_http_response "$@";;
-		find) get_photo_id "$@" ;;
-		export) export_photo_by_id "$@" ;;
+		respond) respond "$@" ;;
 		*) usage ;;
 	esac
 }
+
+
+#### server control
 
 start(){
 	if is_running
 	then
 		echo "already running"
-		exit 1
 	else
-		log "tcpserver -v -RHl0 '$host' '$port' '$this_script' respond $*"
-		tcpserver -v -RHl0 "$host" "$port" "$this_script" respond "$@"&
+		# shellcheck disable=SC2086
+		tcpserver $tcpserver_options $host $port "$this_script" respond "$@"&
 		echo $! > "$tcpserver_pid_file"
 		pause
 		status
 	fi
 }
-pause(){
-	sleep 0.5
-}
-stop(){
-	terminate_process
-	pause
-	status
-}
-
-restart(){
-	stop
-	pause
-	start "$@"
-}
-
+pause(){ sleep 0.5; }
+stop(){ terminate_process; pause; status; }
+restart(){ stop; pause; start "$@";}
 status(){
 	if is_running
 	then
@@ -102,14 +94,14 @@ terminate_process(){
 	test -f "$tcpserver_pid_file" || return
 	if pkill -F "$tcpserver_pid_file" 2>/dev/null
 	then
-		remove_pid_file
+		rm "$tcpserver_pid_file"
 		true
 		return
 	else
 		printf "invalid pid in pid file: " >&2
 		cat "$tcpserver_pid_file" >&2
 		echo "removing pid file: $tcpserver_pid_file" >&2
-		remove_pid_file
+		rm "$tcpserver_pid_file"
 		false
 		return
 	fi
@@ -129,54 +121,86 @@ is_running(){
 	false
 }
 
-remove_pid_file(){
-	rm "$tcpserver_pid_file"
-}
 
-get_photo_id(){ local search_term="$1" timeout_seconds="${2:-$default_timeout_seconds}"
-	test -z "$search_term" && search_term="$(cat -)"
-	log 'search_term=%s\n' "$search_term"
-	if test "$timeout_seconds" != "0"
+#### response handler
+
+respond(){
+	local timeout_seconds="${1:-$default_timeout_seconds}"
+	query="$(
+		head -1 \
+		| awk -F '[ /]' '$1=="GET" {print $3}'
+	)"
+	log 'query=%s\n' "$query"
+	test -z "$query" && respond_with_404_error
+
+	photo_id="$(
+			"$bin_timeout" "$timeout_seconds" \
+			"$bin_find_photo" --timeout 0 "$query"
+		)" || respond_with_500_error
+
+	photo_id="${photo_id%%/*}"
+	log 'photo_id=%s\n' "$photo_id"
+	test -z "$photo_id" && respond_with_404_error
+
+	temp_dir="$(make_temporary_directory "$photo_id")"
+	log 'temp_dir=%s\n' "$temp_dir"
+
+	photo_filename="$(get_photo_filename "$temp_dir")"
+	log 'photo_filename=%s\n' "$photo_filename"
+	if test -z "$photo_filename"
 	then
-		# shellcheck disable=SC2016
-		timeoutcode='
-			ObjC.import("stdlib");
-    		$.system(`
-				pid=$(ps -o ppid= $$)
-				{
-					sleep ${'"$timeout_seconds"'}
-					kill $pid 2>/dev/null \
-						&& echo "search timed out" >&2
-				}&
-			`)'
-	else
-		timeoutcode=""
-	fi
-	osascript -l JavaScript -e "
-		$timeoutcode
-		const mediaItem=Application('Photos')
-			.mediaItems.byId('$search_term')
-		if(mediaItem.exists()){
-			mediaItem.id()
-		} else {
-			const matchingPhotos=Application('Photos')
-				.search({for:'$search_term'})
-				.filter(x=>x.filename().match($image_regex))
-			if (matchingPhotos.length){
-				matchingPhotos[
-					Math.floor(Math.random() * matchingPhotos.length)
-				].id()
-			}
-		}"
-}
+		log 'exporting photo\n'
+		"$bin_export_photo" "$photo_id" "$temp_dir"
 
-# print an id if there's a match, otherwise nothing.
-export_photo_by_id(){ local id="$1" destination="${2:-.}"
-	osascript -l JavaScript -e "
-	const photos=Application('Photos')
-	const mediaItem=Application('Photos').mediaItems.byId('$id')
-	Application('Photos').export([mediaItem],{to:Path('$destination')})
-"
+		photo_filename="$(get_photo_filename "$temp_dir")"
+		log 'photo_filename=%s\n' "$photo_filename"
+		test -z "$photo_filename" && respond_with_404_error
+	fi
+
+	respond_with_image_file "200 OK" "$photo_filename"
+}
+respond_with_image_file(){
+	local status="$1" filename="$2"
+	file_size="$(stat -f'%z' "$filename")"
+	file_type="$(file -b --mime-type "$filename")"
+	print_http_image_header \
+		"200 OK" "$filename" "$file_size" "$file_type"
+	echo
+	cat "$filename"
+	exit 0
+}
+respond_with_image_content(){
+	local status="$1" filename="$2" file_type="$3" image_content="$4"
+	file_size=${#image_content}
+	print_http_image_header \
+		"$status" "$filename" "$file_size" "svg+xml"
+	echo
+	echo "$image_content"
+	exit 0
+}
+respond_with_404_error(){
+	respond_with_image_content \
+		"404 Not Found" \
+		"missing.svg" \
+		"svg+xml" \
+		"$missing_svg"
+}
+respond_with_500_error(){
+	respond_with_image_content \
+		"500 Internal Server Error" \
+		"error.svg" \
+		"svg+xml" \
+		"$error_svg"
+}
+print_http_image_header(){
+	status="$1"
+	filename="$2"
+	file_size="$3"
+	content_type="$4"
+	echo "HTTP/1.1 $status"
+	echo "Content-Disposition: inline; filename=\"$(basename "$filename")\""
+	echo "Content-Type: $content_type"
+	echo "Content-Length: $file_size"
 }
 
 make_temporary_directory(){ local photo_id="$1"
@@ -190,93 +214,6 @@ make_temporary_directory(){ local photo_id="$1"
 get_photo_filename(){ local dir="$1"
 	log "looking for file in: %s\n" "$dir"
 	find "$dir" -maxdepth 1 -type f ! -name '.*' 2>/dev/null
-}
-
-generate_http_response(){
-	local timeout_seconds="${1:-$default_timeout_seconds}"
-	query="$(
-		head -1 \
-		| awk -F '[ /]' '$1=="GET" {print $3}'
-	)"
-	log 'query=%s\n' "$query"
-	test -z "$query" && respond_with_http_error 404
-
-	photo_id="$(get_photo_id "$query" "$timeout_seconds")" \
-		|| respond_with_http_error 500
-	photo_id="${photo_id%%/*}"
-	log 'photo_id=%s\n' "$photo_id"
-	test -z "$photo_id" && respond_with_http_error 404
-
-	temp_dir="$(make_temporary_directory "$photo_id")"
-	log 'temp_dir=%s\n' "$temp_dir"
-
-	photo_filename="$(get_photo_filename "$temp_dir")"
-	log 'photo_filename=%s\n' "$photo_filename"
-	if test -z "$photo_filename"
-	then
-		log 'exporting photo\n'
-		export_photo_by_id "$photo_id" "$temp_dir"
-
-		photo_filename="$(get_photo_filename "$temp_dir")"
-		log 'photo_filename=%s\n' "$photo_filename"
-		test -z "$photo_filename" && respond_with_http_error 404
-	fi
-
-	respond_with_photo "$photo_filename"
-}
-
-get_photo_file(){ local dir="$1"
-	photo_filename="$(photo_filename "$dir")"
-	if test -z "$photo_filename"
-	then
-		photo_filename="$(photo_filename "$dir")"
-	fi
-	echo "$photo_filename"
-
-}
-
-respond_with_photo(){ filename=$1
-	log 'responding with photo: %s\n' "$(basename "$filename")"
-
-	file_size="$(stat -f'%z' "$photo_filename")"
-	file_type="$(file -b --mime-type "$photo_filename")"
-
-	print_http_image_header \
-		"200 OK" "$photo_filename" "$file_size" "$file_type"
-	echo
-	cat "$photo_filename"
-
-}
-respond_with_http_error(){ status="$1"
-	case "$status" in
-	404)
-		status="404 Not Found"
-		filename="missing.svg"
-		image_content="$missing_svg"
-		;;
-	*)
-		status="500 Internal Server Error"
-		filename="error.svg"
-		image_content="$error_svg"
-		;;
-	esac
-	file_size=${#image_content}
-	print_http_image_header \
-		"$status" "$filename" "$file_size" "svg+xml"
-	echo
-	echo "$image_content"
-	exit 0
-}
-
-print_http_image_header(){
-	status="$1"
-	filename="$2"
-	file_size="$3"
-	content_type="$4"
-	echo "HTTP/1.1 $status"
-	echo "Content-Disposition: inline; filename=\"$(basename "$filename")\""
-	echo "Content-Type: $content_type"
-	echo "Content-Length: $file_size"
 }
 
 missing_svg='<?xml version="1.0" encoding="UTF-8"?>
