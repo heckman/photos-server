@@ -27,22 +27,22 @@ usage(){ echo "USAGE:
 
 photos-server command [args]
 
-	start [timeout]
-	stop
-	restart [timeout]
-	status
-		Commands to manage an HTTP server on port $port.
+    start [timeout]
+    stop
+    restart [timeout]
+    status
+        Commands to manage an HTTP server on port $port.
 
-	find <query>
-		Print id of random photo from a Photos.app search.
+    find <query>
+        Print id of random photo from a Photos.app search.
 
-	export <id> [<destination>]
-		Export a media item from Photos.app by id.
+    export <id> [<destination>]
+        Export a media item from Photos.app by id.
 
-	respond [timeout]
-		Respond to an HTTP request with a Photos.appmedia item,
-		specified by id, or a random photo from a search.
-		Do not run this from the command line.
+    respond [timeout]
+        Respond to an HTTP request with a Photos.appmedia item,
+        specified by id, or a random photo from a search.
+        Do not run this from the command line.
 
 The argument timeout, measured in seconds, specifies how long to
 wait for Photos.app to return with results of a query. The default
