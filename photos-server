@@ -147,7 +147,7 @@ get_photo_id(){ local search_term="$1" timeout_seconds="${2:-$default_timeout_se
 					sleep ${'"$timeout_seconds"'}
 					kill $pid 2>/dev/null \
 						&& echo "search timed out" >&2
-				}&
+				}>/dev/null &
 			`)'
 	else
 		timeoutcode=""
