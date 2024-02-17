@@ -31,20 +31,20 @@ usage(){ echo "USAGE:
 
 photos-server command [args]
 
-	start [timeout]
-	stop
-	restart [timeout]
-	status
-		Commands to manage an HTTP server on port $port.
+    start [timeout]
+    stop
+    restart [timeout]
+    status
+        Commands to manage an HTTP server on port $port.
 
-	respond [timeout]
-		Reads an HTTP request from stdin and responds with an HTTP
-		resonse comprised of response headers and binary image
-		data. Do not run this from the command line.
+    respond [timeout]
+        Reads an HTTP request from stdin and responds with an HTTP
+        resonse comprised of response headers and binary image
+        data. Do not run this from the command line.
 
 The argument timeout, measured in seconds, specifies how long to
 wait for Photos.app to return with results of a query. The default
-is $(pluralized seconds "$default_timeout_seconds"). Set to 0 to disable timeout.
+is $(pluralized second "$default_timeout_seconds"). Set to 0 to disable timeout.
 "; exit 69; }
 
 
@@ -279,9 +279,9 @@ log(){ if test -z "$1"; then cat - >$stdlog; else printf "$@" >$stdlog; fi; }
 pluralized(){ local term="$1" number="$2"
 	if test "$number" = "1"
 	then
-		printf '%d second' "$number"
+		printf '%d %s' "$number" "$term"
 	else
-		printf '%d seconds' "$number"
+		printf '%d %ss' "$number" "$term"
 	fi
 }
 
