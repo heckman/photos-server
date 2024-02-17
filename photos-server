@@ -11,6 +11,8 @@
 host=127.0.0.1
 port=6330
 
+tcpserver_options="-v -RHl0" # this will undergo whitespace splitting
+
 default_timeout_seconds=1
 
 app_id=ca.heckman.photos-server
@@ -44,7 +46,7 @@ photos-server command [args]
 
 The argument timeout, measured in seconds, specifies how long to
 wait for Photos.app to return with results of a query. The default
-is $(pluralized seconds "$default_timeout_seconds"). Set to 0 to disable timeout.
+is $(pluralized second "$default_timeout_seconds"). Set to 0 to disable timeout.
 "; exit 69; }
 
 
@@ -54,12 +56,15 @@ main(){ local cmd="$1";shift
 		stop) stop "$@" ;;
 		restart) restart "$@" ;;
 		status) status "$@" ;;
-		respond) generate_http_response "$@";;
+		respond) respond "$@";;
 		find) get_photo_id "$@" ;;
 		export) export_photo_by_id "$@" ;;
 		*) usage ;;
 	esac
 }
+
+
+#### server control
 
 start(){
 	if is_running
@@ -67,28 +72,16 @@ start(){
 		echo "already running"
 		exit 1
 	else
-		log "tcpserver -v -RHl0 '$host' '$port' '$this_script' respond $*"
-		tcpserver -v -RHl0 "$host" "$port" "$this_script" respond "$@"&
+		# shellcheck disable=SC2086
+		tcpserver $tcpserver_options "$host" "$port" "$this_script" respond "$@"&
 		echo $! > "$tcpserver_pid_file"
 		pause
 		status
 	fi
 }
-pause(){
-	sleep 0.5
-}
-stop(){
-	terminate_process
-	pause
-	status
-}
-
-restart(){
-	stop
-	pause
-	start "$@"
-}
-
+pause(){ sleep 0.5; }
+stop(){ terminate_process; pause; status; }
+restart(){ stop; pause; start "$@";}
 status(){
 	if is_running
 	then
@@ -102,14 +95,14 @@ terminate_process(){
 	test -f "$tcpserver_pid_file" || return
 	if pkill -F "$tcpserver_pid_file" 2>/dev/null
 	then
-		remove_pid_file
+		rm "$tcpserver_pid_file"
 		true
 		return
 	else
 		printf "invalid pid in pid file: " >&2
 		cat "$tcpserver_pid_file" >&2
 		echo "removing pid file: $tcpserver_pid_file" >&2
-		remove_pid_file
+		rm "$tcpserver_pid_file"
 		false
 		return
 	fi
@@ -129,83 +122,24 @@ is_running(){
 	false
 }
 
-remove_pid_file(){
-	rm "$tcpserver_pid_file"
-}
 
-get_photo_id(){ local search_term="$1" timeout_seconds="${2:-$default_timeout_seconds}"
-	test -z "$search_term" && search_term="$(cat -)"
-	log 'search_term=%s\n' "$search_term"
-	if test "$timeout_seconds" != "0"
-	then
-		# shellcheck disable=SC2016
-		timeoutcode='
-			ObjC.import("stdlib");
-    		$.system(`
-				pid=$(ps -o ppid= $$)
-				{
-					sleep ${'"$timeout_seconds"'}
-					kill $pid 2>/dev/null \
-						&& echo "search timed out" >&2
-				}>/dev/null &
-			`)'
-	else
-		timeoutcode=""
-	fi
-	osascript -l JavaScript -e "
-		$timeoutcode
-		const mediaItem=Application('Photos')
-			.mediaItems.byId('$search_term')
-		if(mediaItem.exists()){
-			mediaItem.id()
-		} else {
-			const matchingPhotos=Application('Photos')
-				.search({for:'$search_term'})
-				.filter(x=>x.filename().match($image_regex))
-			if (matchingPhotos.length){
-				matchingPhotos[
-					Math.floor(Math.random() * matchingPhotos.length)
-				].id()
-			}
-		}"
-}
+### response handler
 
-# print an id if there's a match, otherwise nothing.
-export_photo_by_id(){ local id="$1" destination="${2:-.}"
-	osascript -l JavaScript -e "
-	const photos=Application('Photos')
-	const mediaItem=Application('Photos').mediaItems.byId('$id')
-	Application('Photos').export([mediaItem],{to:Path('$destination')})
-"
-}
-
-make_temporary_directory(){ local photo_id="$1"
-	temp_dir="${TMPDIR}${app_id}-${photo_id}"
-	mkdir -p "$temp_dir"
-	# shellcheck disable=SC2064 # it's a trap! (expand now)
-	trap 'rm -rf "$temp_dir"' EXIT
-	echo "$temp_dir"
-}
-
-get_photo_filename(){ local dir="$1"
-	log "looking for file in: %s\n" "$dir"
-	find "$dir" -maxdepth 1 -type f ! -name '.*' 2>/dev/null
-}
-
-generate_http_response(){
+respond(){
 	local timeout_seconds="${1:-$default_timeout_seconds}"
 	query="$(
 		head -1 \
 		| awk -F '[ /]' '$1=="GET" {print $3}'
 	)"
 	log 'query=%s\n' "$query"
-	test -z "$query" && respond_with_http_error 404
+	test -z "$query" && respond_with_404_error
 
 	photo_id="$(get_photo_id "$query" "$timeout_seconds")" \
-		|| respond_with_http_error 500
+		|| respond_with_500_error
+
 	photo_id="${photo_id%%/*}"
 	log 'photo_id=%s\n' "$photo_id"
-	test -z "$photo_id" && respond_with_http_error 404
+	test -z "$photo_id" && respond_with_404_error
 
 	temp_dir="$(make_temporary_directory "$photo_id")"
 	log 'temp_dir=%s\n' "$temp_dir"
@@ -219,47 +153,23 @@ generate_http_response(){
 
 		photo_filename="$(get_photo_filename "$temp_dir")"
 		log 'photo_filename=%s\n' "$photo_filename"
-		test -z "$photo_filename" && respond_with_http_error 404
+		test -z "$photo_filename" && respond_with_404_error
 	fi
 
-	respond_with_photo "$photo_filename"
+	respond_with_image_file "200 OK" "$photo_filename"
 }
-
-get_photo_file(){ local dir="$1"
-	photo_filename="$(photo_filename "$dir")"
-	if test -z "$photo_filename"
-	then
-		photo_filename="$(photo_filename "$dir")"
-	fi
-	echo "$photo_filename"
-
-}
-
-respond_with_photo(){ filename=$1
-	log 'responding with photo: %s\n' "$(basename "$filename")"
-
-	file_size="$(stat -f'%z' "$photo_filename")"
-	file_type="$(file -b --mime-type "$photo_filename")"
-
+respond_with_image_file(){
+	local status="$1" filename="$2"
+	file_size="$(stat -f'%z' "$filename")"
+	file_type="$(file -b --mime-type "$filename")"
 	print_http_image_header \
-		"200 OK" "$photo_filename" "$file_size" "$file_type"
+		"200 OK" "$filename" "$file_size" "$file_type"
 	echo
-	cat "$photo_filename"
-
+	cat "$filename"
+	exit 0
 }
-respond_with_http_error(){ status="$1"
-	case "$status" in
-	404)
-		status="404 Not Found"
-		filename="missing.svg"
-		image_content="$missing_svg"
-		;;
-	*)
-		status="500 Internal Server Error"
-		filename="error.svg"
-		image_content="$error_svg"
-		;;
-	esac
+respond_with_image_content(){
+	local status="$1" filename="$2" file_type="$3" image_content="$4"
 	file_size=${#image_content}
 	print_http_image_header \
 		"$status" "$filename" "$file_size" "svg+xml"
@@ -267,7 +177,20 @@ respond_with_http_error(){ status="$1"
 	echo "$image_content"
 	exit 0
 }
-
+respond_with_404_error(){
+	respond_with_image_content \
+		"404 Not Found" \
+		"missing.svg" \
+		"svg+xml" \
+		"$missing_svg"
+}
+respond_with_500_error(){
+	respond_with_image_content \
+		"500 Internal Server Error" \
+		"error.svg" \
+		"svg+xml" \
+		"$error_svg"
+}
 print_http_image_header(){
 	status="$1"
 	filename="$2"
@@ -277,6 +200,19 @@ print_http_image_header(){
 	echo "Content-Disposition: inline; filename=\"$(basename "$filename")\""
 	echo "Content-Type: $content_type"
 	echo "Content-Length: $file_size"
+}
+
+make_temporary_directory(){ local photo_id="$1"
+	temp_dir="${TMPDIR}${app_id}-${photo_id}"
+	mkdir -p "$temp_dir"
+	# shellcheck disable=SC2064 # it's a trap! (expand now)
+	trap 'rm -rf "$temp_dir"' EXIT
+	echo "$temp_dir"
+}
+
+get_photo_filename(){ local dir="$1"
+	log "looking for file in: %s\n" "$dir"
+	find "$dir" -maxdepth 1 -type f ! -name '.*' 2>/dev/null
 }
 
 missing_svg='<?xml version="1.0" encoding="UTF-8"?>
@@ -341,17 +277,62 @@ of the original "Sad Mac" icon by Susan Kare https://kareprints.com
 </svg>
 '
 
+get_photo_id(){ local search_term="$1" timeout_seconds="${2:-$default_timeout_seconds}"
+	test -z "$search_term" && search_term="$(cat -)"
+	log 'search_term=%s\n' "$search_term"
+	if test "$timeout_seconds" != "0"
+	then
+		# shellcheck disable=SC2016
+		timeoutcode='
+			ObjC.import("stdlib");
+    		$.system(`
+				pid=$(ps -o ppid= $$)
+				{
+					sleep ${'"$timeout_seconds"'}
+					kill $pid 2>/dev/null \
+						&& echo "search timed out" >&2
+				}>/dev/null &
+			`)'
+	else
+		timeoutcode=""
+	fi
+	osascript -l JavaScript -e "
+		$timeoutcode
+		const mediaItem=Application('Photos')
+			.mediaItems.byId('$search_term')
+		if(mediaItem.exists()){
+			mediaItem.id()
+		} else {
+			const matchingPhotos=Application('Photos')
+				.search({for:'$search_term'})
+				.filter(x=>x.filename().match($image_regex))
+			if (matchingPhotos.length){
+				matchingPhotos[
+					Math.floor(Math.random() * matchingPhotos.length)
+				].id()
+			}
+		}"
+}
+
+# print an id if there's a match, otherwise nothing.
+export_photo_by_id(){ local id="$1" destination="${2:-.}"
+	osascript -l JavaScript -e "
+	const photos=Application('Photos')
+	const mediaItem=Application('Photos').mediaItems.byId('$id')
+	Application('Photos').export([mediaItem],{to:Path('$destination')})
+"
+}
+
 # shellcheck disable=SC2059
 log(){ if test -z "$1"; then cat - >$stdlog; else printf "$@" >$stdlog; fi; }
 
 pluralized(){ local term="$1" number="$2"
 	if test "$number" = "1"
 	then
-		printf '%d second' "$number"
+		printf '%d %s' "$number" "$term"
 	else
-		printf '%d seconds' "$number"
+		printf '%d %ss' "$number" "$term"
 	fi
 }
 
 main "$@"
-
