@@ -1,11 +1,5 @@
 # 2024-02-15 Progress Note
 
-## New Implementation Details
-
-- Started a new branch with another `sh` version of the program, this
-  time using `tcpserver` from the `ucspi-tcp` package, available vie
-  homebrew.
-
 ## To Do
 
 - Figure out a way to delete temporary files after they are sent via the
