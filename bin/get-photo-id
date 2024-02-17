@@ -138,7 +138,7 @@ function set_timeout(seconds) {
     {
       sleep ${seconds}
       kill $pid 2>/dev/null && echo "search timed out" >&2
-    }&
+    }>/dev/null &
   `);
   }
 }

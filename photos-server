@@ -26,10 +26,6 @@ tcpserver_options="-v -RHl0" # this will undergo whitespace splitting
 bin_find_photo="$this_dir/bin/get-photo-id"
 bin_export_photo="$this_dir/bin/export-photos-by-id"
 
-bin_timeout="$(which timeout)" || {
-	echo "Requires GNU timeout, install with 'brew install coreutils'"
-	exit 1
-}
 
 usage(){ echo "USAGE:
 
@@ -134,8 +130,7 @@ respond(){
 	test -z "$query" && respond_with_404_error
 
 	photo_id="$(
-			"$bin_timeout" "$timeout_seconds" \
-			"$bin_find_photo" --timeout 0 "$query"
+			"$bin_find_photo" --timeout "$timeout_seconds" "$query"
 		)" || respond_with_500_error
 
 	photo_id="${photo_id%%/*}"
