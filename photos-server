@@ -123,10 +123,14 @@ is_running(){
 respond(){
 	local timeout_seconds="${1:-$default_timeout_seconds}"
 
-	query="$(head -1 | awk -F '[ /]+' '$1=="GET" {print $2}')"
+	urlencoded_query="$(head -1 | awk -F '[ /]+' '$1=="GET" {print $2}')"
 	log '\n'
+	query="$(osascript -l JavaScript -e '
+		ObjC.unwrap($.NSURL.URLWithString("'"$urlencoded_query"'").path)'
+		)" # urldecoded
 	log 'Query: %s\n' "$query"
 	test -z "$query" && respond_with_404_error
+
 
 	photo_id="$(
 		"$bin_find_photo" --timeout "$timeout_seconds" "$query"
