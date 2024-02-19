@@ -37,7 +37,7 @@ photos-server command [args]
     status
         Commands to manage an HTTP server on port $port.
 
-    respond [timeout]
+    http_response [timeout]
         Reads an HTTP request from stdin and responds with an HTTP
         resonse comprised of response headers and binary image
         data. Do not run this from the command line.
@@ -54,7 +54,7 @@ main(){ local cmd="$1"; shift
 		stop) stop "$@" ;;
 		restart) restart "$@" ;;
 		status) status "$@" ;;
-		respond) respond "$@" ;;
+		http_response) http_response "$@" ;;
 		*) usage ;;
 	esac
 }
@@ -68,7 +68,7 @@ start(){
 		echo "already running"
 	else
 		# shellcheck disable=SC2086
-		tcpserver $tcpserver_options $host $port "$this_script" respond "$@"&
+		tcpserver $tcpserver_options $host $port "$this_script" http_response "$@"&
 		echo $! > "$tcpserver_pid_file"
 		pause
 		status
@@ -120,14 +120,18 @@ is_running(){
 
 #### response handler
 
-respond(){
+http_response(){
 	local timeout_seconds="${1:-$default_timeout_seconds}"
 
-	urlencoded_query="$(head -1 | awk -F '[ /]+' '$1=="GET" {print $2}')"
 	log '\n'
+
+	urlencoded_query="$(
+		head -1 \
+		| awk -F '[ ]+' '$1=="GET" {print(substr($2,2))}'
+		)" # strips the leading / from the request field
 	query="$(osascript -l JavaScript -e '
 		ObjC.unwrap($.NSURL.URLWithString("'"$urlencoded_query"'").path)'
-		)" # urldecoded
+		)" # urldecode
 	log 'Query: %s\n' "$query"
 	test -z "$query" && respond_with_404_error
 
