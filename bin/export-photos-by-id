@@ -10,6 +10,8 @@
  * Export media items, specified by a list of valid ids, from Apple
  * Photos.app on macOS,
  *
+ * } catch e {
+ * }
  *
  * Copyright (c) 2024 by Erik Ben Heckman <erik@heckman.ca> ("ERIK")
  *
@@ -34,17 +36,24 @@
  */
 
 function run(arguments) {
-  [id_list, destination, ...ignored] = arguments;
-  if (!id_list) throw "no id list provided";
-  if (looks_like_an_id(destination)) {
-    // then all arguments are, in fact, ids
-    id_list = arguments.flatMap((argument) => argument.split(/\s/));
-    destination = ".";
-  } else {
-    id_list = id_list.split(/\s/);
-    if (!destination) destination = ".";
+  try {
+    [id_list, destination, ...ignored] = arguments;
+    if (!id_list)
+      throw new Error("No id list provided.", { cause: 64 });
+    if (looks_like_an_id(destination)) {
+      // then all arguments are, in fact, ids
+      id_list = arguments.flatMap((argument) => argument.split(/\s/));
+      destination = ".";
+    } else {
+      id_list = id_list.split(/\s/);
+      if (!destination) destination = ".";
+    }
+    perform_media_items_export(id_list, destination);
+  } catch (e) {
+    ObjC.import("stdlib");
+    console.log(e.message);
+    $.exit(Number.isInteger(e.cause) ? e.cause : 1);
   }
-  perform_media_items_export(id_list, destination);
 }
 
 // SIDE EFFECT: writes media item to file
