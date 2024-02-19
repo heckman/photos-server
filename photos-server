@@ -174,7 +174,7 @@ respond_with_image_content(){
 	print_http_image_header \
 		"$status" "$filename" "$file_size" "svg+xml"
 	echo
-	echo "$image_content"
+	echo -n "$image_content"
 	exit 0
 }
 respond_with_404_error(){
