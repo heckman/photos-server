@@ -31,13 +31,13 @@ usage(){ echo "USAGE:
 
 photos-server command [args]
 
-    start [timeout]
+    start [<timeout>]
     stop
-    restart [timeout]
+    restart [<timeout>]
     status
         Commands to manage an HTTP server on port $port.
 
-    http_response [timeout]
+    http_response [<timeout>]
         Reads an HTTP request from stdin and responds with an HTTP
         resonse comprised of response headers and binary image
         data. Do not run this from the command line.
