@@ -122,70 +122,78 @@ is_running(){
 
 respond(){
 	local timeout_seconds="${1:-$default_timeout_seconds}"
-	query="$(
-		head -1 \
-		| awk -F '[ /]' '$1=="GET" {print $3}'
-	)"
-	log 'query=%s\n' "$query"
+
+	query="$(head -1 | awk -F '[ /]+' '$1=="GET" {print $2}')"
+	log '\n'
+	log 'Query: %s\n' "$query"
 	test -z "$query" && respond_with_404_error
 
 	photo_id="$(
-			"$bin_find_photo" --timeout "$timeout_seconds" "$query"
-		)" || respond_with_500_error
-
-	photo_id="${photo_id%%/*}"
-	log 'photo_id=%s\n' "$photo_id"
-	test -z "$photo_id" && respond_with_404_error
+		"$bin_find_photo" --timeout "$timeout_seconds" "$query"
+	)" || {
+		test $? -lt 128 && {
+			log 'No query results.\n'
+			respond_with_404_error
+		}
+		log 'Timeout occurred searching for query.\n'
+		respond_with_500_error
+	}
+	log 'Photo ID: %s\n' "$photo_id"
 
 	temp_dir="$(make_temporary_directory "$photo_id")"
-	log 'temp_dir=%s\n' "$temp_dir"
+	log 'Temporary directory: %s\n' "$temp_dir"
 
-	photo_filename="$(get_photo_filename "$temp_dir")"
-	log 'photo_filename=%s\n' "$photo_filename"
-	if test -z "$photo_filename"
-	then
-		log 'exporting photo\n'
-		"$bin_export_photo" "$photo_id" "$temp_dir"
+	photo_filename="$(
+		get_photo_filename "$temp_dir"
+	)" || {
+		log "File not found.\n"
+		log "Exporting photo...\n"
+		"$bin_export_photo" "$photo_id" "$temp_dir" \
+		&& photo_filename="$(get_photo_filename "$temp_dir")"
+	} || {
+		log "Problem exporting photo\n"
+		respond_with_500_error
+	}
+	log "Found file: %s\n" "$photo_filename"
 
-		photo_filename="$(get_photo_filename "$temp_dir")"
-		log 'photo_filename=%s\n' "$photo_filename"
-		test -z "$photo_filename" && respond_with_404_error
-	fi
-
+	log "Responding with file.\n"
 	respond_with_image_file "200 OK" "$photo_filename"
+	exit 0
 }
 respond_with_image_file(){
 	local status="$1" filename="$2"
 	file_size="$(stat -f'%z' "$filename")"
 	file_type="$(file -b --mime-type "$filename")"
 	print_http_image_header \
-		"200 OK" "$filename" "$file_size" "$file_type"
+		"$status" "$filename" "$file_size" "$file_type"
 	echo
 	cat "$filename"
-	exit 0
 }
 respond_with_image_content(){
 	local status="$1" filename="$2" file_type="$3" image_content="$4"
 	file_size=${#image_content}
 	print_http_image_header \
-		"$status" "$filename" "$file_size" "svg+xml"
+		"$status" "$filename" "$file_size" "$file_type"
 	echo
 	echo -n "$image_content"
-	exit 0
 }
 respond_with_404_error(){
+	log "Responding with error code 404.\n"
 	respond_with_image_content \
 		"404 Not Found" \
 		"missing.svg" \
 		"svg+xml" \
 		"$missing_svg"
+	exit 104
 }
 respond_with_500_error(){
+	log "Responding with error code 500.\n"
 	respond_with_image_content \
 		"500 Internal Server Error" \
 		"error.svg" \
 		"svg+xml" \
 		"$error_svg"
+	exit 200
 }
 print_http_image_header(){
 	status="$1"
@@ -207,8 +215,7 @@ make_temporary_directory(){ local photo_id="$1"
 }
 
 get_photo_filename(){ local dir="$1"
-	log "looking for file in: %s\n" "$dir"
-	find "$dir" -maxdepth 1 -type f ! -name '.*' 2>/dev/null
+	find "$dir" -maxdepth 1 -type f ! -name '.*' 2>/dev/null | grep -F ''
 }
 
 missing_svg='<?xml version="1.0" encoding="UTF-8"?>
@@ -274,7 +281,7 @@ of the original "Sad Mac" icon by Susan Kare https://kareprints.com
 '
 
 # shellcheck disable=SC2059
-log(){ if test -z "$1"; then cat - >$stdlog; else printf "$@" >$stdlog; fi; }
+log(){ if test -z "$1"; then cat - >$stdlog; else printf -- "-> $@" >$stdlog; fi; }
 
 pluralized(){ local term="$1" number="$2"
 	if test "$number" = "1"
