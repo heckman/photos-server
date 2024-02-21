@@ -1,0 +1,162 @@
+#!/usr/bin/osascript -l JavaScript
+
+const app = Application.currentApplication();
+app.includeStandardAdditions = true;
+ObjC.import("stdlib");
+ObjC.import("stdio");
+
+function log() {
+  console.log($arguments);
+}
+
+function printf(format) {
+  console.log("foo");
+  // ObjC.import("stdlib");
+  // $.printf(format);
+}
+
+// arguments, default_options -> [ arguments, options ]
+// separates options (long form only) from arguments and validates them
+function parse_options(arguments, options = {}) {
+  var argument;
+  while ((argument = arguments.shift())) {
+    if (argument.charAt(0) != "-") {
+      arguments.unshift(argument);
+      break;
+    }
+    let option = argument.replace(/^--/, "");
+    if (!option) break; // argument was --
+    if (options[option] == undefined)
+      throw new Error(`Unknown option: '${argument}'.`);
+    if (options[option] === true) options[option] = false;
+    else if (options[option] === false) options[option] = true;
+    else {
+      // expects a value
+      let value = arguments.shift();
+      if (value === undefined || value == "--")
+        throw new Error(`Missing value for option: '${option}'.`);
+      options[option] = value;
+    }
+  }
+  return [arguments, options];
+}
+
+function set_timeout(seconds, message = "Timed out.") {
+  if (0 < seconds) {
+    $.system(`
+    pid=$(ps -o ppid= $$)
+    {
+      sleep ${seconds}
+      kill $pid 2>/dev/null && echo "${message}" >&2
+    }>/dev/null &
+  `);
+  }
+}
+
+function terminate_pid_file_process(pid_file) {
+  if (file_exists(pid_file)) {
+    if ($.system(`pkill -F "${pid_file}"`) == 0) {
+      remove_file(pid_file);
+    } else {
+      log("invalid pid in pid file: " + file_contents(pid_file));
+      log("removing pid file: " + pid_file);
+      remove_file(pid_file);
+    }
+  }
+}
+
+function getenv(name) {
+  return $.getenv(name);
+}
+
+function remove_file(path) {
+  return $.system(`rm ${path}`) == 0;
+}
+
+function file_exists(path) {
+  const command = `test -f "${path}"`;
+  // log(command);
+  return $.system(command) == 0;
+}
+
+function system(command) {
+  return $.system(command) == 0;
+}
+function pause(seconds) {
+  $.system(`sleep ${seconds}`);
+}
+function is_pid_file_process_running(pid_file) {
+  const exists = file_exists(pid_file);
+  // log(exists);
+  if (exists) {
+    // log("found pid file: " + pid_file);
+    if ($.system(`pgrep -F "${pid_file}">/dev/null`) == 0) return true;
+    remove_file(pid_file);
+  }
+  return false;
+}
+
+// returns a string with complete contents of stdin (not streamed!)
+function stdin() {
+  return ObjC.unwrap(
+    $.NSString.alloc.initWithDataEncoding(
+      $.NSFileHandle.fileHandleWithStandardInput.availableData,
+      $.NSUTF8StringEncoding
+    )
+  );
+}
+function print(unquoted) {
+  $.system(`echo ${quoted_form(unquoted)}\\\\c`);
+}
+function cat(unquoted) {
+  $.system(`cat ${quoted_form(unquoted)}`);
+}
+
+function quoted_form(text) {
+  // log(text);
+  const quoted = "'" + String(text).replaceAll("'", "'\"'\"'") + "'";
+  // log(quoted);
+  return quoted;
+}
+
+function make_temporary_directory(name) {
+  ObjC.import("stdlib");
+  const dirname = $.getenv("TMPDIR") + name;
+  $.system("mkdir -p " + dirname);
+  return dirname;
+}
+function a_file_in(dir) {
+  const command = `find '${dir}' -maxdepth 1 -type f ! -name '.*' -print -quit | grep -F ''`;
+  const found = app.doShellScript(command);
+  return found;
+}
+function file_contents(filename) {
+  const command = "cat " + filename;
+  // log(command);
+  return app.doShellScript(command);
+}
+
+function basename(filename) {
+  return app.doShellScript("basename " + filename);
+}
+function file_type(filename) {
+  return app.doShellScript("file -b --mime-type " + filename);
+}
+
+function file_size(filename) {
+  return app.doShellScript("stat -f'%z' " + filename);
+}
+
+function log(message) {
+  console.log(message);
+}
+
+function photos(...arguments) {
+  const command =
+    `/usr/bin/osascript -l JavaScript -e 'function run(arguments){return Library("photos").run(arguments);}' ` +
+    arguments.map((arg) => quoted_form(arg)).join(" ");
+  log(command);
+  const result = app.doShellScript(command);
+  log(result);
+  return result;
+}

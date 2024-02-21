@@ -48,16 +48,17 @@ function run(arguments) {
       id_list = id_list.split(/\s/);
       if (!destination) destination = ".";
     }
-    perform_media_items_export(id_list, destination);
+    export_photos(id_list, destination);
   } catch (e) {
     ObjC.import("stdlib");
-    console.log(e.message);
+    console.log(JSON.stringify(e));
     $.exit(Number.isInteger(e.cause) ? e.cause : 1);
   }
 }
 
-// SIDE EFFECT: writes media item to file
-function perform_media_items_export(ids, posix_path) {
+// SIDE EFFECT: writes media items to file
+// is is an array of ids
+function export_photos(ids, posix_path) {
   Application("Photos").export(
     ids.map((id) => Application("Photos").mediaItems.byId(id)),
     {

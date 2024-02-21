@@ -1,0 +1,4 @@
+#!/usr/bin/osascript -l JavaScript
+function run(arguments) {
+  return Library("photos").run(arguments);
+}

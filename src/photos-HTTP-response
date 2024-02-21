@@ -1,0 +1,195 @@
+#!/usr/bin/osascript -l JavaScript
+/**
+#
+#  photos-server
+#
+# serves photos from Photos.app
+
+# Listens on a port for a query, and forwards it to Apple Photos.
+# If the query is the id of a media item in the Photos library,
+# that media item is returned. Otherwise Photos performs a search,
+# the responses are limited to photos, and one of the results,
+# randomly selected, is returned.
+*/
+
+var u = Library("utils");
+var p_find = Library("photos-find");
+var p_export = Library("photos-export");
+ObjC.import("stdlib");
+
+const app_id = "ca.heckman.photos-server";
+const temp_dir_prefix = app_id + ".photos-item.";
+
+const default_timeout_seconds = 1;
+
+function log(message) {
+  u.log("-> " + message);
+}
+
+function run(arguments) {
+  // log("foo");
+  // log(arguments);
+  var timeout_seconds = arguments.shift();
+  timeout_seconds = timeout_seconds
+    ? timeout_seconds
+    : default_timeout_seconds;
+  // log("bar");
+  const request_line = u.stdin().split("\n")[0];
+  log(timeout_seconds);
+  const req_path = request_line.split(" ")[1];
+  log("Path: " + req_path);
+  const query = ObjC.unwrap(
+    $.NSURL.URLWithString(req_path).path
+  ).substring(1);
+  log("Query: " + query);
+  if (!query.length) return respond_with_404_error();
+  try {
+    // HACK
+    // for the timeout to work it has to invoke this function in a subshell
+    var photo_id = u.photos(
+      "find",
+      "--timeout",
+      timeout_seconds,
+      query
+    ); // and we don't get a return value so we don't know if a timeout killed it!
+
+    // THIS DIDN'T WORK BECAUSE THE TIMEOUT KILLED _THIS_ PROCESS
+    // var photo_id = p_find.find_photos(query, {
+    //   timeout: timeout_seconds,
+    // });
+  } catch (e) {
+    log("Error: " + JSON.stringify(e)); // we're not getting anything here
+    // can't tell if there was a timeout or not
+    respond_with_404_error();
+  }
+  log("Photo UUID: " + photo_id);
+  if (!photo_id) {
+    return respond_with_404_error();
+  }
+
+  const temp_dir = u.make_temporary_directory(
+    temp_dir_prefix + photo_id
+  );
+  log("Temp Dir: " + temp_dir);
+
+  var photo_filename;
+  try {
+    photo_filename = u.a_file_in(temp_dir);
+  } catch {
+    log("file not found");
+    p_export.export_photos([photo_id], temp_dir);
+    try {
+      photo_filename = u.a_file_in(temp_dir);
+    } catch (e) {
+      console.log(photo_filename);
+      log("Problem exporting photo. " + JSON.stringify(e));
+      return respond_with_500_error();
+    }
+  }
+  log("Found file: " + photo_filename);
+
+  log("Responding with file.");
+  return respond_with_photo(photo_filename);
+}
+function respond_with_photo(filename) {
+  u.print(`${http_headers("200 OK", {
+    filename: u.basename(filename),
+    filetype: u.file_type(filename),
+    filesize: u.file_size(filename),
+  })}
+
+`);
+  u.cat(filename);
+  return;
+}
+function http_headers(http_status, options) {
+  log("Responding with content.");
+  return `HTTP/1.1 ${http_status}
+Content-Disposition: inline; filename="${options.filename}"
+Content-Type: ${options.filetype}
+Content-Length: ${options.filesize}`;
+}
+function respond_with_404_error() {
+  log("Responding with error code 404.");
+  u.print(`${http_headers("404 Not Found", {
+    filename: "missing.svg",
+    filetype: "svg+xml",
+    filesize: missing_svg.length,
+  })}
+
+${missing_svg}`);
+}
+
+function respond_with_500_error() {
+  log("Responding with error code 500.");
+  u.print(`${http_headers("500 Internal Server Error", {
+    filename: "error.svg",
+    filetype: "svg+xml",
+    filesize: error_svg.length,
+  })}
+
+${error_svg}`);
+}
+
+const missing_svg = `<?xml version="1.0" encoding="UTF-8"?>
+<!-- old school pixellated netscape broken image icon -->
+<!--
+  source: https://gist.github.com/diachedelic/cbb7fdd2271afa52435b7d4185e6a4ad
+  accessed: 2024-02-12
+-->
+<svg viewBox="0 0 14 16" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <g id="borders-and-backgrounds">
+    <path d="M0,0 L10,0 L10,1 L1,1 L1,15 L2,15 L2,16 L0,16 Z" fill="black"></path>
+    <path d="M10,4 l4,0 l0,3 l-1,0 l0,-2 l-3,0 Z" fill="black"></path>
+    <path d="M14,16 l0,-6 l-1,0 l0,5 l-5,0 l0,1 Z" fill="black"></path>
+    <path d="M12,14 l0,-3 l-1,0 l0,2 l-2,0 l0,1 Z" fill="#bcbcc3"></path>
+    <path d="M10,0 l1,0 l0,1 l1,0 l0,1 l1,0 l0,1 l1,0 l0,1 l-1,0 l0,-1 l-1,0 l0,-1 l-1,0 l0,2 l-1,0 Z" fill="#878787">
+    </path>
+    <path d="M2,2 l8,0 l0,3 l2,0 l0,2 l-4,0 l0,5 l-2,0 l0,1 l-2,0 l0,1 l-2,0 Z" fill="#bcbcc3"></path>
+  </g>
+  <g id="lefteye">
+    <path d="M5,3 l2,0 l0,3 l-3,0 l0,-2 l1,0 l0,1 l1,0 l0,-1 l-1,0 Z" fill="#00891e"></path>
+    <path d="M5,4 l1,0 l0,1 l-1,0 Z" fill="#00f248"></path>
+    <path d="M7,4 l1,0 l0,2 l-1,0 l0,1 l-2,0 l0,-1 l2,0 Z" fill="black"></path>
+  </g>
+  <g id="righteye">
+    <path d="M8,7 l3,0 l0,2 l-1,0 l0,-1 l-1,0 l0,1 l1,0 l0,1 l-2,0 Z" fill="#0064fb"></path>
+    <path d="M9,8 l1,0 l0,1 l-1,0 Z" fill="#00fbfe"></path>
+    <path d="M10,9 l1,0 l0,1 l-1,0 Z" fill="#003293"></path>
+    <path d="M11,7 l1,0 l0,2 l-1,0 Z" fill="black"></path>
+    <path d="M8,10 l2,0 l0,1 l-2,0 Z" fill="black"></path>
+  </g>
+  <g id="mouth">
+    <path d="M3,8 l1,0 l0,1 l1,0 l0,1 l1,0 l0,1 l1,0 l0,1 l-1,0 l0,-1 l-1,0 l0,-1 l-1,0 l0,-1 l-1,0 Z" fill="#ff3900">
+    </path>
+    <path d="M3,9 l1,0 l0,1 l1,0 l0,1 l1,0 l0,1 l-3,0 Z" fill="#f73ae1"></path>
+    <path d="M3,12 l3,0 l0,1 l-3,0 Z" fill="black"></path>
+  </g>
+</svg>
+`;
+
+const error_svg = `<?xml version="1.0" encoding="UTF-8"?>
+<!--
+hand-coded and shaded svg by Erik Ben Heckman https://erik.heckman.ca
+of the original "Sad Mac" icon by Susan Kare https://kareprints.com
+-->
+<svg viewBox="0 0 37 37" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <g id="shading">
+    <path id="mask" fill="#f4f4f4" d="
+    M6,4 h25 v26 h-25 z M7,3 h23 v32 h-23 zM8,2 h 21 v 2 h-21 z"></path>
+    <path id="screen" fill="#fafafa" d="
+    M10,6 h17 v14 h-17 Z"></path>
+    <path id="plinth" fill="#ddd" d="
+    M8,31 h21 v 3 h-21 Z"></path>
+  </g>
+  <path id="lines" fill-rule="evenodd" fill="black" d="
+    M6,4 h25 v26 h-25 z M7,3 h23 v32 h-23 z M8,2 h 21 v 2 h-21 z M8,31 h21 v 3 h-21 Z
+    M10,5 h17 v16 h-17 z M9,6 h19 v14 h-19 Z
+    M13,9 h1 v3 h-1 v-1 h3 v1 h-1 v-3 h1 v1 h-3 Z
+    M21,9 h1 v3 h-1 v-1 h3 v1 h-1 v-3 h1 v1 h-3 Z
+    M16,13 h1 v2 h2 v-2 h1 v1 h-4 Z
+    M16,16 h5 v2 h3 v1 h-1 v-2 h-8 v 1 h 1 Z
+    M9,26 h2 v1 h-2 Z
+    M21,25 h6 v1 h-6 Z"></path>
+</svg>
+`;

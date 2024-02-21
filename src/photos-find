@@ -31,10 +31,10 @@
  *
  * get-photo-id [--id|--search [--all]] [--timeout <seconds>] <id/query>
  */
-
+u = Library("utils");
 function run(arguments) {
   try {
-    [[query, ...ignored], options] = parse_options(arguments, {
+    [[query, ...ignored], options] = u.parse_options(arguments, {
       id: false, // true = fail if the query does not match an id
       search: false, // true = search only: do not check for id match first
       all: false, // false = only return one id from the resultant search
@@ -44,47 +44,53 @@ function run(arguments) {
       // media items whose filename matches this case-insensitive regular
       // expression. Use a dot or an empty string to match everything.
     });
-    if (!query) throw new Error("No query specified.", { cause: 64 });
 
-    set_timeout(
+    // this timeout mechanism only works if this process is in a subshell,
+    // if called as a library, it will abort the calling process
+    u.set_timeout(
       options.timeout,
       `Search timed out after ${options.timeout} second${
         options.timeout == 1 ? "" : "s"
       }.`
     ); // to abort overly-broad searches
 
-    var media_items = [];
-    var media_item;
-
-    if (
-      !options.search && // which would force search-only
-      looks_like_an_id(query) &&
-      (media_item = get_item_by_id(query)) &&
-      media_item.exists()
-    ) {
-      return get_id(media_item, options.full);
-    } else if (!options.id) {
-      // which would force id-only
-      media_items = get_items_by_search(
-        query,
-        new RegExp(options.filter, "i")
-      );
-      if (!media_items.length) {
-        throw new Error("No items found.");
-      } else if (!options.all) {
-        return get_id(random_member_of(media_items), options.full);
-      } else {
-        return media_items
-          .map((media_item) => get_id(media_item, options.full))
-          .join("\n");
-      }
-    } else {
-      throw new Error("ID not found.");
-    }
+    return find_photos(query, options);
   } catch (e) {
     ObjC.import("stdlib");
-    console.log(e.message);
+    console.log(JSON.stringify(e));
     $.exit(Number.isInteger(e.cause) ? e.cause : 1);
+  }
+}
+function find_photos(query, options) {
+  if (!query) throw new Error("No query specified.", { cause: 64 });
+
+  var media_items = [];
+  var media_item;
+
+  if (
+    !options.search && // which would force search-only
+    looks_like_an_id(query) &&
+    (media_item = get_item_by_id(query)) &&
+    media_item.exists()
+  ) {
+    return get_id(media_item, options.full);
+  } else if (!options.id) {
+    // which would force id-only
+    media_items = get_items_by_search(
+      query,
+      new RegExp(options.filter, "i")
+    );
+    if (!media_items.length) {
+      throw new Error("No items found.");
+    } else if (!options.all) {
+      return get_id(random_member_of(media_items), options.full);
+    } else {
+      return media_items
+        .map((media_item) => get_id(media_item, options.full))
+        .join("\n");
+    }
+  } else {
+    throw new Error("ID not found.");
   }
 }
 
@@ -116,43 +122,4 @@ function get_items_by_search(query, pattern = "") {
 // array -> random item in array
 function random_member_of(an_array) {
   return an_array[Math.floor(Math.random() * an_array.length)];
-}
-
-// arguments, default_options -> [ arguments, options ]
-// separates options (long form only) from arguments and validates them
-function parse_options(arguments, options = {}) {
-  var argument;
-  while ((argument = arguments.shift())) {
-    if (argument.charAt(0) != "-") {
-      arguments.unshift(argument);
-      break;
-    }
-    let option = argument.replace(/^--/, "");
-    if (!option) break; // argument was --
-    if (options[option] == undefined)
-      throw new Error(`Unknown option: '${argument}'.`);
-    if (options[option] === true) options[option] = false;
-    else if (options[option] === false) options[option] = true;
-    else {
-      // expects a value
-      let value = arguments.shift();
-      if (value === undefined || value == "--")
-        throw new Error(`Missing value for option: '${option}'.`);
-      options[option] = value;
-    }
-  }
-  return [arguments, options];
-}
-
-function set_timeout(seconds, message = "Timed out.") {
-  if (0 < seconds) {
-    ObjC.import("stdlib");
-    $.system(`
-    pid=$(ps -o ppid= $$)
-    {
-      sleep ${seconds}
-      kill $pid 2>/dev/null && echo "${message}" >&2
-    }>/dev/null &
-  `);
-  }
 }

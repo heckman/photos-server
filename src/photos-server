@@ -1,0 +1,108 @@
+#!/usr/bin/osascript -l JavaScript
+// SPDX-FileCopyrightText: 2024 Erik Ben Heckman
+// SPDX-PackageDownloadLocation: git://github.com/heckman/photos-server
+// SPDX-License-Identifier: GPL-3.0-only
+/**
+
+  photos-server
+
+ serves photos from Photos.app
+ Listens on a port for a query, and forwards it to Apple Photos.
+ If the query is the id of a media item in the Photos library,
+ that media item is returned. Otherwise Photos performs a search,
+ the responses are limited to photos, and one of the results,
+ randomly selected, is returned.
+*/
+const u = Library("utils");
+const host = "127.0.0.1";
+const port = "6330";
+
+const default_timeout_seconds = 1;
+
+const app_id = "ca.heckman.photos-server";
+const tcpserver_pid_file =
+  u.getenv("TMPDIR") + app_id + ".tcpserver.pid";
+
+function run(arguments) {
+  // console.log("arguments:" + arguments);
+  const commands = {
+    start: {
+      func: server_start,
+      opts: "[<timeout>]",
+    },
+    stop: {
+      func: server_stop,
+    },
+    status: {
+      func: server_status,
+    },
+    restart: {
+      func: server_restart,
+      opts: "[<timeout>]",
+    },
+  };
+  const dispatch = commands[arguments.shift()]?.func;
+  // console.log("dispatch:" + dispatch);
+  if (dispatch) return dispatch(arguments);
+  return usage("photos server", commands);
+}
+
+function usage(command, subcommands) {
+  return `USAGE: ${command} <SUBCOMMAND> [<TIMEOUT>]
+
+Where the subcommands control the server:
+${Object.keys(subcommands)
+  .map(
+    (c) =>
+      "  " + c + (subcommands[c].opts ? " " + subcommands[c].opts : "")
+  )
+  .join("\n")}
+
+Where appropriate, TIMEOUT is measured in seconds, and represents
+the time that will be allowed for Photos.app to respond to a query.
+The default is ${default_timeout_seconds}; 0 disables the timeout completely.
+`;
+}
+function server_start(arguments) {
+  if (is_running()) {
+    return "already running";
+  } else {
+    const tcpserver_command = `tcpserver -v -RHl0 ${host} ${port} photos _http_response ${arguments.join(
+      "  "
+    )}`;
+    // console.log(tcpserver_command);
+    u.system(tcpserver_command + " & echo $! > " + tcpserver_pid_file);
+    u.pause(0.5);
+    return server_status();
+  }
+}
+function server_stop() {
+  if (is_running()) {
+    u.terminate_pid_file_process(tcpserver_pid_file);
+    u.pause(0.5);
+    return server_status();
+  } else {
+    return "already stopped";
+  }
+}
+function server_restart(arguments) {
+  if (is_running()) {
+    server_stop();
+    u.pause(0.5);
+    return `restarting...
+${server_start(arguments)}`;
+  } else {
+    return `starting...
+${server_start(arguments)}`;
+  }
+}
+function server_status() {
+  if (is_running()) {
+    return `running (pid ${u.file_contents(tcpserver_pid_file)})`;
+  } else {
+    return "stopped";
+  }
+}
+function is_running() {
+  return u.is_pid_file_process_running(tcpserver_pid_file);
+}

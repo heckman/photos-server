@@ -1,0 +1,77 @@
+#!/usr/bin/osascript -l JavaScript
+// SPDX-FileCopyrightText: 2024 Erik Ben Heckman
+// SPDX-PackageDownloadLocation: git://github.com/heckman/photos-server
+// SPDX-License-Identifier: GPL-3.0-only
+
+/**
+ *
+ * photos
+ *
+ * Utility for the Apple Photos application.
+ *
+ *
+ * Copyright (c) 2024 by Erik Ben Heckman <erik@heckman.ca> ("ERIK")
+ *
+ * Permission to use, copy, modify, and/or distribute this software for
+ * any purpose with or without fee is hereby granted, provided that the
+ * above copyright notice and this permission notice appear in all
+ * copies.
+ *
+ * THE SOFTWARE IS PROVIDED “AS IS” AND ERIK DISCLAIMS ALL WARRANTIES
+ * WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF
+ * MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL ERIK BE LIABLE FOR ANY
+ * SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES
+ * WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
+ * ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT
+ * OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
+ */
+
+/**
+ * Usage:
+ *
+ * get-photo-id [--id|--search [--all]] [--timeout <seconds>] <id/query>
+ */
+
+function run(arguments) {
+  const commands = {
+    find: {
+      lib: "photos-find",
+      desc: "Find the id of a media item in Photos.app.",
+    },
+    server: {
+      lib: "photos-server",
+      desc: "Start/stop/restart serving photos from Photos.app.",
+    },
+    export: {
+      lib: "photos-export",
+      desc: "Export media items from Photos.app by id.",
+    },
+    _http_response: {
+      lib: "photos-HTTP-response",
+    },
+  };
+  // const arg = arguments.shift();
+  // console.log(arg);
+  // const cmd = commands[arg];
+  // console.log(cmd.lib);
+  const dispatch = commands[arguments.shift()]?.lib;
+  // console.log("dispatch:" + dispatch);
+  if (dispatch) {
+    // console.log("arguments:" + arguments);
+    return Library(dispatch).run(arguments);
+  }
+  return usage("photos", commands);
+}
+
+function usage(command, subcommands) {
+  return `USAGE: ${command} <COMMAND> [ARGS...]
+
+Where the command is one of:
+${Object.keys(subcommands)
+  .filter((c) => subcommands[c].desc)
+  .map((c) => `  ${c.padEnd(12)}: ${subcommands[c].desc}`)
+  .join("\n")}
+
+Use '${command} <COMMAND> --help' for more information about a command.
+`;
+}
