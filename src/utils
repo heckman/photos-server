@@ -119,6 +119,19 @@ function quoted_form(text) {
   return quoted;
 }
 
+// returns its stdout
+// throws a catchable error if it fails with the properties:
+//   message, errorNumber, line, column, stack
+function shell(...unquoted) {
+  return app.doShellScript(quoted(...unquoted));
+}
+// quotes strings for the shell command line
+function quoted(...unquoted) {
+  return unquoted
+    .map((q) => "'" + String(q).replaceAll("'", "'\"'\"'") + "'")
+    .join(" ");
+}
+
 function make_temporary_directory(name) {
   ObjC.import("stdlib");
   const dirname = $.getenv("TMPDIR") + name;
@@ -152,11 +165,11 @@ function log(message) {
 }
 
 function photos(...arguments) {
-  const command =
-    `/usr/bin/osascript -l JavaScript -e 'function run(arguments){return Library("photos").run(arguments);}' ` +
-    arguments.map((arg) => quoted_form(arg)).join(" ");
-  log(command);
-  const result = app.doShellScript(command);
-  log(result);
-  return result;
+  return app.doShellScript(
+    `/usr/bin/osascript -l JavaScript -e '
+      function run(arguments){
+        return Library("photos").run(arguments);
+      }
+    ' ${quoted(...arguments)}`
+  );
 }

@@ -44,23 +44,19 @@ function run(arguments) {
   log("Query: " + query);
   if (!query.length) return respond_with_404_error();
   try {
-    // HACK
-    // for the timeout to work it has to invoke this function in a subshell
+    // to make use of the timeout feature, the find function cannot be
+    // called directly from the library, because the timeout works by
+    // causing the script to terminate.
     var photo_id = u.photos(
       "find",
       "--timeout",
       timeout_seconds,
       query
-    ); // and we don't get a return value so we don't know if a timeout killed it!
-
-    // THIS DIDN'T WORK BECAUSE THE TIMEOUT KILLED _THIS_ PROCESS
-    // var photo_id = p_find.find_photos(query, {
-    //   timeout: timeout_seconds,
-    // });
+    );
   } catch (e) {
-    log("Error: " + JSON.stringify(e)); // we're not getting anything here
-    // can't tell if there was a timeout or not
-    respond_with_404_error();
+    log("Find photo exit status: " + e.errorNumber);
+    if (e.errorNumber > 127) return respond_with_500_error(); // timeout occurred
+    return respond_with_404_error();
   }
   log("Photo UUID: " + photo_id);
   if (!photo_id) {
