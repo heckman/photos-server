@@ -24,12 +24,18 @@
  * OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-import { serve } from "bun";
+import express from "express";
 import { mkdir, readdir } from "node:fs/promises";
 import { Dirent } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { exec } from "node:child_process";
+
+import { fileURLToPath } from "url";
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const server = express();
 
 // server settings
 const port = 6330;
@@ -63,27 +69,31 @@ const tmp_dir_root = tmpdir();
 const tmp_dir_prefix = "photos-server_item_";
 
 // main
-serve({
-  port: port,
-  async fetch(req) {
-    log(); // blank line to hightlight a new request
-    return get_query(new URL(req.url).pathname)
-      .then(validate_query)
-      .then(get_photo_id)
-      .then(get_photo_file)
-      .then(respond_with_photo)
-      .catch(respond_with_error);
-  },
+server.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
+});
+
+server.get("/:q", (req: express.Request, res: express.Response) => {
+  log(); // blank line to hightlight a new request
+  return get_query(req.params.q)
+    .then(validate_query)
+    .then(get_photo_id)
+    .then(get_photo_file)
+    .then((filename: string) => respond_with_photo(res, filename))
+    .catch((error: { message: string; cause?: any }) =>
+      respond_with_error(res, error)
+    );
 });
 
 // url_path -> id  (or throw 404: invalid URI
-async function get_query(url_path: string): Promise<string> {
-  try {
-    return decodeURI(url_path).slice(1);
-  } catch (e) {
-    log("error", e, 2);
-    throw http_error(404, `Poorly-formatted path: ${url_path}`, e);
-  }
+async function get_query(q: string): Promise<string> {
+  return q;
+  // try {
+  //   return decodeURI(url_path).slice(1);
+  // } catch (e) {
+  //   log("error", e, 2);
+  //   throw http_error(404, `Poorly-formatted path: ${url_path}`, e);
+  // }
 }
 
 // query -> query  (or throw 404: empty query)
@@ -133,25 +143,24 @@ async function get_photo_file(id: string): Promise<string> {
 
 // filename, [status] -> Response object
 function respond_with_photo(
+  res: express.Response,
   absolute_filename: string,
   status = 200
-): Response {
+): void {
   const basename = path.basename(absolute_filename);
   log("sending", basename);
-  return new Response(Bun.file(absolute_filename), {
-    status: status,
-    headers: {
-      "content-disposition": `inline; filename="${basename}"`,
-    },
-  });
+  res.status(status).sendFile(absolute_filename);
 }
 
 // { message, cause } -> Response object
 // the message is expected to be an HTTP status code
-function respond_with_error(error: {
-  message: string;
-  cause?: any;
-}): Response {
+function respond_with_error(
+  res: express.Response,
+  error: {
+    message: string;
+    cause?: any;
+  }
+): void {
   if (!error.message?.match(/^[45][0-9][0-9]$/)) {
     error = http_error(500, "Unknown error", { cause: error });
     log("error", error, 2);
@@ -161,7 +170,11 @@ function respond_with_error(error: {
     error.message + ": " + (error.cause?.message || error.cause)
   );
   const status = Number(error.message);
-  return respond_with_photo(error_filenames[error.message], status);
+  return respond_with_photo(
+    res,
+    error_filenames[error.message],
+    status
+  );
 }
 
 // directory -> filename  ( or throw { message, path } )

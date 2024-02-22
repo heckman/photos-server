@@ -33,9 +33,13 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/express": "^4.17.21",
     "@types/node": "^20.11.19"
   },
   "peerDependencies": {
     "typescript": "^5.0.0"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
   }
 }
