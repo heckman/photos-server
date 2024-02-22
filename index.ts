@@ -24,7 +24,9 @@
  * OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-import express from "express";
+import Fastify from "fastify";
+import fastifyStatic from "@fastify/static";
+
 import { mkdir, readdir } from "node:fs/promises";
 import { Dirent } from "node:fs";
 import path from "node:path";
@@ -32,10 +34,12 @@ import { tmpdir } from "node:os";
 import { exec } from "node:child_process";
 
 import { fileURLToPath } from "url";
+import type fastify from "fastify";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const server = express();
+const server = Fastify();
+server.register(fastifyStatic);
 
 // server settings
 const port = 6330;
@@ -68,25 +72,28 @@ const error_filenames: { [key: string]: string } = {
 const tmp_dir_root = tmpdir();
 const tmp_dir_prefix = "photos-server_item_";
 
-// main
-server.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
-});
-
-server.get("/:q", (req: express.Request, res: express.Response) => {
+server.get("/:q", async (req: any, rep) => {
   log(); // blank line to hightlight a new request
   return get_query(req.params.q)
     .then(validate_query)
     .then(get_photo_id)
     .then(get_photo_file)
-    .then((filename: string) => respond_with_photo(res, filename))
+    .then((filename: string) => respond_with_photo(rep, filename))
     .catch((error: { message: string; cause?: any }) =>
-      respond_with_error(res, error)
+      respond_with_error(rep, error)
     );
 });
 
+// main
+server.listen({ port: port }, function (err, address) {
+  if (err) {
+    process.exit(1);
+  }
+  // Server is now listening on ${address}
+});
+
 // url_path -> id  (or throw 404: invalid URI
-async function get_query(q: string): Promise<string> {
+async function get_query(q: any): Promise<string> {
   return q;
   // try {
   //   return decodeURI(url_path).slice(1);
@@ -143,7 +150,7 @@ async function get_photo_file(id: string): Promise<string> {
 
 // filename, [status] -> Response object
 function respond_with_photo(
-  res: express.Response,
+  res: any,
   absolute_filename: string,
   status = 200
 ): void {
@@ -155,7 +162,7 @@ function respond_with_photo(
 // { message, cause } -> Response object
 // the message is expected to be an HTTP status code
 function respond_with_error(
-  res: express.Response,
+  rep: any,
   error: {
     message: string;
     cause?: any;
@@ -171,7 +178,7 @@ function respond_with_error(
   );
   const status = Number(error.message);
   return respond_with_photo(
-    res,
+    rep,
     error_filenames[error.message],
     status
   );
