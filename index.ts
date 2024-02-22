@@ -30,6 +30,7 @@ import { Dirent } from "node:fs";
 import path from "node:path";
 import { tmpdir } from "node:os";
 import { exec } from "node:child_process";
+import { app as osa_app } from "nodeautomation";
 
 // server settings
 const port = 6330;
@@ -61,6 +62,11 @@ const error_filenames: { [key: string]: string } = {
 // identifies the server's temporary directories
 const tmp_dir_root = tmpdir();
 const tmp_dir_prefix = "photos-server_item_";
+
+const mediaitem_filename_filter = new RegExp(
+  "\\.(jpeg|jpg|heic)$",
+  "i"
+);
 
 // main
 serve({
@@ -95,21 +101,14 @@ async function validate_query(query: string): Promise<string> {
 
 // query -> id  (or throw 500: search timed out)
 async function get_photo_id(query: string): Promise<string> {
-  return call([
-    bin_get_id,
-    "--timeout",
-    get_photo_id_timeout_seconds,
-    query,
-  ])
-    .catch((e) => {
-      log("error", e, 2);
-      throw http_error(500, "ID search timed out", e);
-    })
-    .then((id) => {
-      log("photo id", id);
-      if (!id) throw http_error(404, "ID not found");
-      return id;
-    });
+  return Promise.race([
+    jxa_get_uuid(query),
+    new Promise<string>((resolve, reject) => {
+      setTimeout(() => {
+        reject(http_error(500, "Search timed out"));
+      }, get_photo_id_timeout_seconds * 1000);
+    }),
+  ]);
 }
 
 // id -> filename  (or throw 500: export failed)
@@ -232,4 +231,36 @@ function log(message: string = "", obj: any = "", level: number = 0) {
       ? JSON.stringify(obj, Object.getOwnPropertyNames(obj), "  ")
       : ""
   );
+}
+
+// node-JXA functions
+
+// timeout handled elsewhere
+async function jxa_get_uuid(query: string): Promise<string> {
+  const photos = osa_app("Photos");
+  if (looks_like_uuid(query)) {
+    const media_item = photos.mediaItems.byId(query);
+    return media_item.id();
+  } else {
+    const matching_ids = photos
+      .search({ for: query })
+      .filter((item: any) =>
+        item.filename().match(mediaitem_filename_filter)
+      )
+      .map((item: any) => item.id());
+    if (!matching_ids.length) throw new Error("No matches.");
+    return random_member_of(matching_ids);
+  }
+}
+
+// allows for garbage following uuid
+function looks_like_uuid(possible_uuid) {
+  return RegExp(
+    "^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}",
+    "i"
+  ).test(possible_uuid);
+}
+
+function random_member_of(an_array) {
+  return an_array[Math.floor(Math.random() * an_array.length)];
 }
