@@ -8,6 +8,9 @@ ObjC.import("stdio");
 function log() {
   console.log($arguments);
 }
+function logo(...args) {
+  console.log(args.map((arg) => JSON.stringify(arg)).join(", "));
+}
 
 function printf(format) {
   console.log("foo");
@@ -78,7 +81,9 @@ function file_exists(path) {
   // log(command);
   return $.system(command) == 0;
 }
-
+function exit(exit_code) {
+  $.exit(isNaN(exit_code) ? 0 : exit_code);
+}
 function system(command) {
   return $.system(command) == 0;
 }
@@ -125,6 +130,24 @@ function quoted_form(text) {
 function shell(...unquoted) {
   return app.doShellScript(quoted(...unquoted));
 }
+function osa_js(script, ...arguments) {
+  const command =
+    "/usr/bin/osascript -l JavaScript <<'EOF' - " +
+    quoted(...arguments) +
+    "\n" +
+    script +
+    "\nEOF\n";
+  // logo("utils:osa_js:command", command);
+  return app.doShellScript(command);
+}
+function run_library(library, ...args) {
+  // logo("utils:run_library:library,args", library, args);
+  return osa_js(
+    `function run(arguments){return Library("${library}").run(arguments);}`,
+    ...args
+  );
+}
+
 // quotes strings for the shell command line
 function quoted(...unquoted) {
   return unquoted
@@ -172,4 +195,15 @@ function photos(...arguments) {
       }
     ' ${quoted(...arguments)}`
   );
+}
+
+function random_member_of(an_array) {
+  return an_array[Math.floor(Math.random() * an_array.length)];
+}
+
+function is_uuid(text) {
+  return RegExp(
+    "^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$",
+    "i"
+  ).test(text);
 }

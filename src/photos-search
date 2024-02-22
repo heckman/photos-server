@@ -1,0 +1,65 @@
+#!/usr/bin/osascript -l JavaScript
+// SPDX-FileCopyrightText: 2024 Erik Ben Heckman
+// SPDX-PackageDownloadLocation: git://github.com/heckman/photos-server
+// SPDX-License-Identifier: GPL-3.0-only
+/*
+
+
+photos-search
+
+Prints a space-separated list of UUIDs of Photos.app media items that
+match the given query.
+
+*/
+const u = Library("utils");
+options = { timeout: 1, filter: "\\.(jpeg|jpg|heic)$" };
+const usage = `
+
+Usage: photos-search [--filter <regex> ] [--timeout <seconds>] query
+
+The filter is a case-insensitive regular expression against which to
+compare the filename of each search result, only matches will be
+included in the final result. The default is '${options.filter}'.
+Set to an empty string to match everything.
+
+The timeout limits the time provided Photos.app to complete its search;
+defaults to ${options.timeout}, 0 disables the timeout.
+
+Returns exit code 0 when there are matches, as well when it has been
+determined that there are no matches before the timeout occurs.
+
+A timeout generates an exit code of 143. Other values are unexpected.
+
+`;
+
+function run(arguments) {
+  try {
+    [arguments, options] = u.parse_options(arguments, options);
+  } catch (error) {
+    return usage;
+  }
+  const query = arguments.join(" ");
+  u.logo("photos-search:run:options", options);
+  if (options.timeout > 0) {
+    u.set_timeout(options.timeout, "Search timed out.");
+  }
+  // resultant exit code on timeout with exit code 143
+  return Application("Photos")
+    .search({ for: query })
+    .filter((item) =>
+      item.filename().match(new RegExp(options.filter, "i"))
+    )
+    .map((item) => item.id())
+    .join(" ");
+}
+
+// library invocation
+// this calls itself in its own process so the timeout only kill itself
+function call(query, { timeout, filter }) {
+  var args = [];
+  if (filter) args.push("--filter", filter);
+  if (timeout) args.push("--timeout", timeout);
+  args.push(query);
+  // u.logo("photos-search:call:args", args);
+  return u.run_library("photos-search", ...args);
+}

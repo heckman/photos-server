@@ -1,0 +1,74 @@
+#!/usr/bin/osascript -l JavaScript
+// SPDX-FileCopyrightText: 2024 Erik Ben Heckman
+// SPDX-PackageDownloadLocation: git://github.com/heckman/photos-server
+// SPDX-License-Identifier: GPL-3.0-only
+/*
+
+
+photos-search
+
+Prints a space-separated list of UUIDs of Photos.app media items that
+match the given query.
+
+*/
+const u = Library("utils");
+const ps = Library("photos-search");
+const usage = `
+
+Usage: photos-search [--filter <regex> ] [--timeout <seconds>] query
+
+The filter is a case-insensitive regular expression against which to
+compare the filename of each search result, only matches will be
+included in the final result. The default is '\.(jpeg|jpg|heic)$'.
+Set to an empty string to match everything.
+
+The timeout limits the time provided Photos.app to complete its search;
+defaults to 1, 0 disables the timeout.
+
+Returns exit code 0 when there are matches, as well when it has been
+determined that there are no matches before the timeout occurs.
+
+A timeout generates an exit code of 143. Other values are unexpected.
+
+`;
+
+// command-line invocation
+function run(arguments) {
+  try {
+    // console.log(ps.options);
+    [arguments, options] = u.parse_options(arguments, {
+      timeout: 1,
+      filter: "\\.(jpeg|jpg|heic)$",
+    });
+  } catch (error) {
+    return usage;
+  }
+  try {
+    return call(arguments.join(" "), options).slice(0, 36);
+  } catch (error) {
+    // u.log(error.cause);
+    if (error.errorNumber == 143) {
+      console.log("Search timed out."); // 143
+    } else if (error.errorNumber < 0) {
+      // console.log(error.message);
+      console.log("Invalid media uuid."); // -1728 (exit code is -1728 % 256 = 64)
+    } else {
+      if (isNaN(error.errorNumber)) error.errorNumber = 1;
+      console.log(error.message);
+    }
+    u.exit(error.errorNumber);
+  }
+}
+function call(query, options) {
+  // u.logo("photos-resolve:call:query,options", query, options);
+  if (u.is_uuid(query.slice(0, 36))) return check_id(query);
+  // u.logo("photos-resolve:call:query,options", query, options);
+  const matches = ps.call(query, options).split(" ");
+  // u.logo("photos-resolve:call:matches", matches);
+  if (matches[0] == "") throw new Error("No matches.");
+  return u.random_member_of(matches);
+}
+function check_id(id) {
+  const media_item = Application("Photos").mediaItems.byId(id);
+  return media_item.id();
+}

@@ -38,6 +38,10 @@ function run(arguments) {
       lib: "photos-find",
       desc: "Find the id of a media item in Photos.app.",
     },
+    resolve: {
+      lib: "photos-resolve",
+      desc: "Find the id of a media item in Photos.app. (new implementation)",
+    },
     server: {
       lib: "photos-server",
       desc: "Start/stop/restart serving photos from Photos.app.",
