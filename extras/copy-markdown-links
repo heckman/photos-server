@@ -1,0 +1,88 @@
+#!/usr/bin/osascript -l JavaScript
+
+// Copies the items selected in Apple Photos to the clipboard as
+// markdown links with trailing newlines
+
+// RAYCAST INSTALLATION PARAMETERS
+//
+// Required:
+// @raycast.schemaVersion 1
+// @raycast.title Copy Markdown Links
+// @raycast.mode silent
+// other modes: silent, compact, fullOutput
+//
+// Optional:
+// @raycast.icon 🔗
+// @raycast.packageName Heckman's Suite
+// Documentation:
+// @raycast.description In Chrome: open tabs, in Photos: selected photos
+// @raycast.author Erik
+// @raycast.authorURL erik.heckman.ca
+
+const imageServer = "http://localhost:6330";
+
+const frontmostAppName = Application("System Events")
+  .applicationProcesses.where({ frontmost: true })[0]
+  .name();
+const frontmostApp = Application(frontmostAppName);
+frontmostApp.includeStandardAdditions = true;
+
+switch (frontmostApp.name()) {
+  case "Google Chrome":
+    const chromeApp = frontmostApp;
+    var links = chromeApp.windows[0].tabs().map((tab) => {
+      return {
+        name: tab.name(),
+        url: tab.url(),
+      };
+    });
+    frontmostApp.setTheClipboardTo(
+      formatMarkdownLinks(links, { before: "- ", after: "\n" })
+    );
+    frontmostApp.displayAlert("Copied!", {
+      message:
+        "The clipboard now contains a list of markdown links to the tabs in the frontmost window.",
+    });
+    break;
+  case "Photos":
+    const photosApp = frontmostApp;
+    var links = photosApp.selection().map((item) => {
+      return {
+        name:
+          item.name() == null || item.name().trim == ""
+            ? item.filename()
+            : item.name(),
+        url: `${imageServer}/${item.id()}`,
+      };
+    });
+    photosApp.setTheClipboardTo(
+      formatMarkdownLinks(links, { before: "!", after: "\n" })
+    );
+    // frontmostApp.displayAlert("Copied!", {
+    //   message:
+    //     "The clipboard now contains markdown links to the selected photos.",
+    //   buttons: ["OK"],
+    //   defaultButton: "OK",
+    // });
+    if (links.length == 0) {
+      ("No links copied.");
+    } else if (links.length == 1) {
+      ("Markdown link copied to clipboard!");
+    } else {
+      `${links.length} markdown links copied to clipboard!`;
+    }
+    break;
+  default:
+    frontmostApp.displayAlert("Nothing to do.", {
+      message: `${frontmostApp.name()} is not configured to copy markdown links.`,
+    });
+}
+
+function formatMarkdownLinks(
+  links,
+  { before = "", after = "", between = "" }
+) {
+  return links
+    .map((link) => `${before}[${link.name}](${link.url})${after}`)
+    .join(between);
+}
