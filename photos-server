@@ -9,21 +9,23 @@
 # that media item is returned. Otherwise Photos performs a search,
 # the responses are limited to photos, and one of the results,
 # randomly selected, is returned.
+#
+#
+# requires:  tcpserver  (available via homebrew)
 
-host=127.0.0.1
+host="127.0.0.1"
 port=6330
 
-default_timeout_seconds=1
+tcpserver_options="-v -RHl0" # this will undergo whitespace splitting
+timeout_seconds="${2:-1}" # default is 1 second
 
-app_id=ca.heckman.photos-server
-tcpserver_pid_file="${TMPDIR}${app_id}.tcpserver.pid"
-stdlog=/dev/stderr
+tcpserver_pid_file="${TMPDIR}ca.heckman.photos-server.tcpserver.pid"
 
 this_script="$(realpath "$0")" #should be good enough for now
 this_dir="$(dirname "$this_script")"
-tcpserver_options="-v -RHl0" # this will undergo whitespace splitting
+http_handler="$this_dir/photos-http-response-handler"
 
-photos="$this_dir/photos"
+stdlog=/dev/stderr
 
 
 usage(){ echo "USAGE:
@@ -36,14 +38,9 @@ photos-server command [args]
     status
         Commands to manage an HTTP server on port $port.
 
-    http_response [<timeout>]
-        Reads an HTTP request from stdin and responds with an HTTP
-        resonse comprised of response headers and binary image
-        data. Do not run this from the command line.
-
 The argument timeout, measured in seconds, specifies how long to
 wait for Photos.app to return with results of a query. The default
-is $(pluralized second "$default_timeout_seconds"). Set to 0 to disable timeout.
+is 1. Set to 0 to disable the timeout, which is not recommended.
 "; exit 69; }
 
 
@@ -67,7 +64,7 @@ start(){
 		echo "already running"
 	else
 		# shellcheck disable=SC2086
-		tcpserver $tcpserver_options $host $port "$this_script" http_response "$@"&
+		tcpserver $tcpserver_options $host $port "$http_handler" "$timeout_seconds"&
 		echo $! > "$tcpserver_pid_file"
 		pause
 		status
@@ -79,7 +76,7 @@ restart(){ stop; pause; start "$@";}
 status(){
 	if is_running
 	then
-		echo "running (pid $(cat "$tcpserver_pid_file"))"
+		echo "running: pid: $(cat "$tcpserver_pid_file"), timeout: $timeout_seconds"
 	else
 		echo "stopped"
 	fi
@@ -116,188 +113,13 @@ is_running(){
 	false
 }
 
-
-#### response handler
-
-http_response(){
-	local timeout_seconds="${1:-$default_timeout_seconds}"
-
-	log '\n'
-
-	urlencoded_query="$(
-		head -1 \
-		| awk -F '[ ]+' '$1=="GET" {print(substr($2,2))}'
-		)" # strips the leading / from the request field
-	query="$(osascript -l JavaScript -e '
-		ObjC.unwrap($.NSURL.URLWithString("'"$urlencoded_query"'").path)'
-		)" # urldecode
-	log 'Query: %s\n' "$query"
-	test -z "$query" && respond_with_404_error
-
-
-	photo_id="$(
-		"$photos" id --timeout "$timeout_seconds" "$query"
-	)" || {
-		test $? -lt 128 && {
-			log 'No query results.\n'
-			respond_with_404_error
-		}
-		log 'Timeout occurred searching for query.\n'
-		respond_with_500_error
-	}
-	log 'Photo ID: %s\n' "$photo_id"
-
-	temp_dir="$(make_temporary_directory "$photo_id")"
-	log 'Temporary directory: %s\n' "$temp_dir"
-
-	photo_filename="$(
-		get_photo_filename "$temp_dir"
-	)" || {
-		log "File not found.\n"
-		log "Exporting photo...\n"
-		"$photos" export "$photo_id" "$temp_dir" \
-		&& photo_filename="$(get_photo_filename "$temp_dir")"
-	} || {
-		log "Problem exporting photo\n"
-		respond_with_500_error
-	}
-	log "Found file: %s\n" "$photo_filename"
-
-	log "Responding with file.\n"
-	respond_with_image_file "200 OK" "$photo_filename"
-	exit 0
-}
-respond_with_image_file(){
-	local status="$1" filename="$2"
-	file_size="$(stat -f'%z' "$filename")"
-	file_type="$(file -b --mime-type "$filename")"
-	print_http_image_header \
-		"$status" "$filename" "$file_size" "$file_type"
-	echo
-	cat "$filename"
-}
-respond_with_image_content(){
-	local status="$1" filename="$2" file_type="$3" image_content="$4"
-	file_size=${#image_content}
-	print_http_image_header \
-		"$status" "$filename" "$file_size" "$file_type"
-	echo
-	echo -n "$image_content"
-}
-respond_with_404_error(){
-	log "Responding with error code 404.\n"
-	respond_with_image_content \
-		"404 Not Found" \
-		"missing.svg" \
-		"svg+xml" \
-		"$missing_svg"
-	exit 104
-}
-respond_with_500_error(){
-	log "Responding with error code 500.\n"
-	respond_with_image_content \
-		"500 Internal Server Error" \
-		"error.svg" \
-		"svg+xml" \
-		"$error_svg"
-	exit 200
-}
-print_http_image_header(){
-	status="$1"
-	filename="$2"
-	file_size="$3"
-	content_type="$4"
-	echo "HTTP/1.1 $status"
-	echo "Content-Disposition: inline; filename=\"$(basename "$filename")\""
-	echo "Content-Type: $content_type"
-	echo "Content-Length: $file_size"
-}
-
-make_temporary_directory(){ local photo_id="$1"
-	temp_dir="${TMPDIR}${app_id}-${photo_id}"
-	mkdir -p "$temp_dir"
-	# shellcheck disable=SC2064 # it's a trap! (expand now)
-	trap 'rm -rf "$temp_dir"' EXIT
-	echo "$temp_dir"
-}
-
-get_photo_filename(){ local dir="$1"
-	find "$dir" -maxdepth 1 -type f ! -name '.*' 2>/dev/null | grep -F ''
-}
-
-missing_svg='<?xml version="1.0" encoding="UTF-8"?>
-<!-- old school pixellated netscape broken image icon -->
-<!--
-  source: https://gist.github.com/diachedelic/cbb7fdd2271afa52435b7d4185e6a4ad
-  accessed: 2024-02-12
--->
-<svg viewBox="0 0 14 16" version="1.1" xmlns="http://www.w3.org/2000/svg">
-  <g id="borders-and-backgrounds">
-    <path d="M0,0 L10,0 L10,1 L1,1 L1,15 L2,15 L2,16 L0,16 Z" fill="black"></path>
-    <path d="M10,4 l4,0 l0,3 l-1,0 l0,-2 l-3,0 Z" fill="black"></path>
-    <path d="M14,16 l0,-6 l-1,0 l0,5 l-5,0 l0,1 Z" fill="black"></path>
-    <path d="M12,14 l0,-3 l-1,0 l0,2 l-2,0 l0,1 Z" fill="#bcbcc3"></path>
-    <path d="M10,0 l1,0 l0,1 l1,0 l0,1 l1,0 l0,1 l1,0 l0,1 l-1,0 l0,-1 l-1,0 l0,-1 l-1,0 l0,2 l-1,0 Z" fill="#878787">
-    </path>
-    <path d="M2,2 l8,0 l0,3 l2,0 l0,2 l-4,0 l0,5 l-2,0 l0,1 l-2,0 l0,1 l-2,0 Z" fill="#bcbcc3"></path>
-  </g>
-  <g id="lefteye">
-    <path d="M5,3 l2,0 l0,3 l-3,0 l0,-2 l1,0 l0,1 l1,0 l0,-1 l-1,0 Z" fill="#00891e"></path>
-    <path d="M5,4 l1,0 l0,1 l-1,0 Z" fill="#00f248"></path>
-    <path d="M7,4 l1,0 l0,2 l-1,0 l0,1 l-2,0 l0,-1 l2,0 Z" fill="black"></path>
-  </g>
-  <g id="righteye">
-    <path d="M8,7 l3,0 l0,2 l-1,0 l0,-1 l-1,0 l0,1 l1,0 l0,1 l-2,0 Z" fill="#0064fb"></path>
-    <path d="M9,8 l1,0 l0,1 l-1,0 Z" fill="#00fbfe"></path>
-    <path d="M10,9 l1,0 l0,1 l-1,0 Z" fill="#003293"></path>
-    <path d="M11,7 l1,0 l0,2 l-1,0 Z" fill="black"></path>
-    <path d="M8,10 l2,0 l0,1 l-2,0 Z" fill="black"></path>
-  </g>
-  <g id="mouth">
-    <path d="M3,8 l1,0 l0,1 l1,0 l0,1 l1,0 l0,1 l1,0 l0,1 l-1,0 l0,-1 l-1,0 l0,-1 l-1,0 l0,-1 l-1,0 Z" fill="#ff3900">
-    </path>
-    <path d="M3,9 l1,0 l0,1 l1,0 l0,1 l1,0 l0,1 l-3,0 Z" fill="#f73ae1"></path>
-    <path d="M3,12 l3,0 l0,1 l-3,0 Z" fill="black"></path>
-  </g>
-</svg>
-'
-error_svg='<?xml version="1.0" encoding="UTF-8"?>
-<!--
-hand-coded and shaded svg by Erik Ben Heckman https://erik.heckman.ca
-of the original "Sad Mac" icon by Susan Kare https://kareprints.com
--->
-<svg viewBox="0 0 37 37" version="1.1" xmlns="http://www.w3.org/2000/svg">
-  <g id="shading">
-    <path id="mask" fill="#f4f4f4" d="
-    M6,4 h25 v26 h-25 z M7,3 h23 v32 h-23 zM8,2 h 21 v 2 h-21 z"></path>
-    <path id="screen" fill="#fafafa" d="
-    M10,6 h17 v14 h-17 Z"></path>
-    <path id="plinth" fill="#ddd" d="
-    M8,31 h21 v 3 h-21 Z"></path>
-  </g>
-  <path id="lines" fill-rule="evenodd" fill="black" d="
-    M6,4 h25 v26 h-25 z M7,3 h23 v32 h-23 z M8,2 h 21 v 2 h-21 z M8,31 h21 v 3 h-21 Z
-    M10,5 h17 v16 h-17 z M9,6 h19 v14 h-19 Z
-    M13,9 h1 v3 h-1 v-1 h3 v1 h-1 v-3 h1 v1 h-3 Z
-    M21,9 h1 v3 h-1 v-1 h3 v1 h-1 v-3 h1 v1 h-3 Z
-    M16,13 h1 v2 h2 v-2 h1 v1 h-4 Z
-    M16,16 h5 v2 h3 v1 h-1 v-2 h-8 v 1 h 1 Z
-    M9,26 h2 v1 h-2 Z
-    M21,25 h6 v1 h-6 Z"></path>
-</svg>
-'
-
 # shellcheck disable=SC2059
 log(){ if test -z "$1"; then cat - >$stdlog; else printf -- "-> $*" >$stdlog; fi; }
 
-pluralized(){ local term="$1" number="$2"
-	if test "$number" = "1"
-	then
-		printf '%d %s' "$number" "$term"
-	else
-		printf '%d %ss' "$number" "$term"
-	fi
-}
+for requirement in $requirements
+do
+	type "$requirement" >/dev/null || exit 3
+done
 
 main "$@"
 
