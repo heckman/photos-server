@@ -2,16 +2,15 @@
 #
 #  photos-server
 #
-# serves photos from Photos.app
+# Serves photos from Apple Photos.
 
-# Listens on a port for a query, and forwards it to Apple Photos.
-# If the query is the id of a media item in the Photos library,
-# that media item is returned. Otherwise Photos performs a search,
-# the responses are limited to photos, and one of the results,
-# randomly selected, is returned.
+# Controls an HTTP server that forwards requests to a separate
+# handler. Refer to the handler for more details.
 #
-#
-# requires:  tcpserver  (available via homebrew)
+# The server requires `tcpserver`, and the hanlder needs `trurl`.
+# Both are available via HomeBrew.
+
+requirements="tcpserver trurl"   # both available via homebrew
 
 host="127.0.0.1"
 port=6330

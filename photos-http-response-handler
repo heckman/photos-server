@@ -2,16 +2,27 @@
 #
 #  photos-http-response-handler
 #
-# serves photos from Photos.app
+# Serves photos from Apple Photos.
 
-# Listens on a port for a query, and forwards it to Apple Photos.
-# If the query is the id of a media item in the Photos library,
-# that media item is returned. Otherwise Photos performs a search,
-# the responses are limited to photos, and one of the results,
-# randomly selected, is returned.
+# Responds to http requests from stdin, where the root of the url
+# path is either the UUID of a media item in Apple Photos or a
+# search query.
 #
-# If the second element of the path is "open" then Apple Photos
-# is also launched, with the media item "spotlighted".
+# If a UUID is provided and matches the id of a media item in the
+# Photos library, the media item is served. If the UUID is
+# invalid, a 404 error is returned.
+#
+# A provided query will generate a search by Apple Photos for
+# matching photos. (It is limited to photos). Among the results, a
+# random one will be served. If the search comes up empty, a 404 error is returnd.
+#
+# If the search takes longer than a preset timeout, or one specified
+# on the command line, a 500 error is returned.
+#
+# If the second element of the path is "open" then Apple Photos is
+# also launched, with specified/queried media item "spotlighted".
+# Note that if the media item is determined by a search, then tho
+# one "spotlighted" and returned via HTTP might be different photos!
 #
 #
 # requires:  trurl  (available via homebrew)

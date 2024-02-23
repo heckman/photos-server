@@ -4,9 +4,9 @@ Serves photos from the [Apple
 Photos](https://apps.apple.com/app/photos/id1584215428) application
 locally on your Mac.
 
-TODO: **THIS FILE IS OLD AND NEEDS TO BE UPDATED.**
-
 ## Usage
+
+### Client
 
 Make a HTTP request to `http://localhost:6330/<query>[/open]...
 
@@ -17,14 +17,45 @@ Make a HTTP request to `http://localhost:6330/<query>[/open]...
   JPEG and HEIC files (no movies).
 - If the search produces no valid results, you'll get a _404_.
 - If the search takes too long you'll get a _500_ error. (Try narrowing
-  your search terms.) The timeout is configurable and currently (but
-  liable to change without being updated here) defaults to 1 second.
+  your search terms.)
+- if `/open` is appended to the URL, the photo also will be opened in
+  the Photos app.
+
+### Server
+
+Control the server with `photos-server` with the following commands:
+
+```
+  photos-server start [<timeout>]
+  photos-server restart [<timeout>]
+  photos-server stop
+  photos-server status
+```
+
+Searches performed by Apple Photos can be limited to `<timeout`>
+seconds. At the moment (but liable to change without being updated here)
+the default is 1 second. Setting this to 0 seconds disables the timeout.
+
+### Installation
+
+There is no automated installation.
+
+The utilities `tcpserver` and `trurl` are required. Both are avaiable
+via homebrew.
+
+There are three files to install, they can pretty-much go wherever you
+want, as long as `photos-server` can find the other two, edit its code
+to suit. I reccomend putting `photos` on your path, so you can make use
+of its utilities, and putting `photos-http-response-handler` somewhere
+more out of the way, as it's not intended to be called from the command
+line.
 
 ## Command-line tools
 
 Several command-line functions to interact with Apple Photos were
 created in the implementation of this server. They may be extracted to
-their own repository in the future.
+their own repository in the future. Currently they are included in the
+file `photos`.
 
 ## Implementation
 
