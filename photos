@@ -1,0 +1,179 @@
+#!/usr/bin/osascript -l JavaScript
+// SPDX-FileCopyrightText: 2024 Erik Ben Heckman
+// SPDX-PackageDownloadLocation: git://github.com/heckman/photos-server
+// SPDX-License-Identifier: GPL-3.0-only
+
+const program = "photos";
+
+const usage = `
+
+A command-line interface to the applescript functions of Photos.app.
+
+`;
+const options = {
+  full: "Include portion of id following the UUID, always '/L0/001'.",
+  filter:
+    "Only include media items whose filename matches this case-insensitive regular expression",
+  timeout: "Abort search after this many seconds, 0 = never",
+  delim: "Delimiter between outputted UUIDs in output",
+  original:
+    "Export original image from Photos.app instead of the edited one",
+};
+var commands = {};
+commands.id = {
+  options: { full: false, filter: "\\.(jpeg|jpg|heic)$", timeout: 1 },
+  description:
+    "Return UUIDs of one randomly selected matching Photos.app media item." +
+    "Throw an error is none are found",
+  usage:
+    "photos id [-full ][--filter <regex> ][--timeout <seconds>] query",
+  do: function (arguments, options) {
+    const item = matching_item(arguments.join(" "), options);
+    return options.full ? item.id() : item.id().slice(0, 36);
+  },
+};
+commands.ids = {
+  options: { ...commands.id.options, delim: "\n" },
+  description: "Return UUIDs of all matching Photos.app media items.",
+  do: function (arguments, options) {
+    return matching_items(arguments.join(" "), options)
+      .map((item) =>
+        options.full ? item.id() : item.id().slice(0, 36)
+      )
+      .join(options.delim);
+  },
+};
+commands.export = {
+  options: { ...commands.id.options, original: false },
+  description: "Export matching media item from Photos.app",
+  do: function (arguments, options) {
+    const destination = Path(arguments.pop());
+    const item = matching_item(arguments.join(" "), options);
+    return Application("Photos").export([item], {
+      to: destination,
+      usingOriginals: options.original,
+    });
+  },
+};
+commands.open = {
+  options: { ...commands.id.options },
+  description: "Open a media item from Photos.app",
+  do: function (arguments, options) {
+    Application("Photos").spotlight(
+      matching_item(arguments.join(" "), options)
+    );
+    Application("Photos").activate();
+  },
+};
+
+// query -> media item; throws an error if not found
+function matching_item(query, options) {
+  const items = matching_items(query, options);
+  switch (items.length) {
+    case 0:
+      throw new Error("No matching items found.");
+    case 1:
+      return items[0];
+    default:
+      return random_member_of(items);
+  }
+}
+
+// query -> array of media items;
+// returns an empty array if no items are found,
+// unless the query is an invalid UUID, in which case it throws an error
+function matching_items(query, options) {
+  if (!query) throw new Error("No query provided.");
+  if (is_uuid(query.slice(0, 36)))
+    return [item_by_id(query.slice(0, 36))];
+  if (options.timeout)
+    set_timeout(options.timeout, "Search timed out.");
+  return items_by_search(query).filter((item) =>
+    item.filename().match(new RegExp(options.filter, "i"))
+  );
+}
+
+// uuid -> media item; throws an error if UUID is not found
+function item_by_id(uuid) {
+  return Application("Photos").mediaItems.byId(uuid);
+}
+
+// query -> array of media items; empty array if none are found
+function items_by_search(query) {
+  return Application("Photos").search({ for: query });
+}
+
+// command, [options,] arguments -> execute command
+function run(arguments) {
+  const command_name = arguments.shift();
+  try {
+    const command = commands[command_name];
+    if (!command) throw new Error(`Unknown command: ${command_name}`);
+    var options;
+    [arguments, options] = parse_options(arguments, command.options);
+    return command.do(arguments, options);
+  } catch (error) {
+    console.log(error.message);
+    exit(1);
+  }
+}
+
+// arguments, default_options -> [ arguments, options ]
+// separates options (long form only) from arguments and validates them
+function parse_options(arguments, options = {}) {
+  var argument;
+  while ((argument = arguments.shift())) {
+    if (argument.charAt(0) != "-") {
+      arguments.unshift(argument);
+      break;
+    }
+    let option = argument.replace(/^--/, "");
+    if (!option) break; // argument was --
+    if (options[option] == undefined)
+      throw new Error(`Unknown option: '${argument}'.`);
+    if (options[option] === true) options[option] = false;
+    else if (options[option] === false) options[option] = true;
+    else {
+      // expects a value
+      let value = arguments.shift();
+      if (value === undefined || value == "--")
+        throw new Error(`Missing value for option: '${option}'.`);
+      options[option] = value;
+    }
+  }
+  return [arguments, options];
+}
+
+// this function will kill the script after the given number of seconds.
+function set_timeout(seconds, message = "Timed out.") {
+  ObjC.import("stdlib");
+  if (0 < seconds) {
+    $.system(`
+    pid=$(ps -o ppid= $$)
+    {
+      sleep ${seconds}
+      kill $pid 2>/dev/null && echo "${message}" >&2
+    }>/dev/null &
+  `);
+  }
+}
+
+function exit(exit_code) {
+  ObjC.import("stdlib");
+  $.exit(isNaN(exit_code) ? 0 : exit_code);
+}
+
+function random_member_of(an_array) {
+  return an_array[Math.floor(Math.random() * an_array.length)];
+}
+
+function is_uuid(text) {
+  return RegExp(
+    "^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$",
+    "i"
+  ).test(text);
+}
+
+function log(...args) {
+  console.log(args.map((arg) => JSON.stringify(arg)).join(", "));
+}

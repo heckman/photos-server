@@ -23,8 +23,7 @@ this_script="$(realpath "$0")" #should be good enough for now
 this_dir="$(dirname "$this_script")"
 tcpserver_options="-v -RHl0" # this will undergo whitespace splitting
 
-bin_find_photo="$this_dir/bin/get-photo-id"
-bin_export_photo="$this_dir/bin/export-photos-by-id"
+photos="$this_dir/photos"
 
 
 usage(){ echo "USAGE:
@@ -137,7 +136,7 @@ http_response(){
 
 
 	photo_id="$(
-		"$bin_find_photo" --timeout "$timeout_seconds" "$query"
+		"$photos" id --timeout "$timeout_seconds" "$query"
 	)" || {
 		test $? -lt 128 && {
 			log 'No query results.\n'
@@ -156,7 +155,7 @@ http_response(){
 	)" || {
 		log "File not found.\n"
 		log "Exporting photo...\n"
-		"$bin_export_photo" "$photo_id" "$temp_dir" \
+		"$photos" export "$photo_id" "$temp_dir" \
 		&& photo_filename="$(get_photo_filename "$temp_dir")"
 	} || {
 		log "Problem exporting photo\n"
