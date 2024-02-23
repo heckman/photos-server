@@ -3,6 +3,8 @@
 // SPDX-PackageDownloadLocation: git://github.com/heckman/photos-server
 // SPDX-License-Identifier: GPL-3.0-only
 
+ObjC.import("stdlib");
+
 const program = "photos";
 
 const usage = `
@@ -63,6 +65,54 @@ commands.open = {
       matching_item(arguments.join(" "), options)
     );
     Application("Photos").activate();
+  },
+};
+commands.server = {
+  options: {
+    ...commands.id.options,
+    port: 6330,
+    host: "127.0.0.1",
+    pause_seconds: 0.5,
+    pid_file: $.getenv("TMPDIR") + "ca.heckman.photos-server.pid",
+  },
+  description: "Start/stop/reset the http server",
+  do: function (arguments, options) {
+    switch ((subcommand = arguments.shift())) {
+      case "stop":
+        server_stop(options);
+        server_wait(options);
+        server_status(options);
+        break;
+      case "restart":
+        server_stop(options);
+        server_wait(options);
+      case "start":
+        server_start(options);
+        server_wait(options);
+      case "status":
+        server_status(options);
+        break;
+      default:
+        throw new Error("Unknown server command: " + subcommand);
+    }
+  },
+};
+commands.http = {
+  options: {
+    ...commands.id.options,
+    tmpdir_prefix: $.getenv("TMPDIR") + "ca.heckman.photos-server.",
+    pause_seconds: 0.5,
+  },
+  description: "Handle an http request.",
+  do: function (arguments, options) {
+    [query, { action }] = read_http_request();
+    log("query:", query, "action:", action);
+    switch (action) {
+      case "open":
+        commands.open.do([query], options);
+      default:
+        return serve_image(query, options);
+    }
   },
 };
 
@@ -159,7 +209,6 @@ function set_timeout(seconds, message = "Timed out.") {
 }
 
 function exit(exit_code) {
-  ObjC.import("stdlib");
   $.exit(isNaN(exit_code) ? 0 : exit_code);
 }
 
@@ -176,4 +225,245 @@ function is_uuid(text) {
 
 function log(...args) {
   console.log(args.map((arg) => JSON.stringify(arg)).join(", "));
+}
+
+// server control
+
+function server_start(options) {
+  if (server_is_running(options)) {
+    $.system('echo "Server is already running."');
+  } else {
+    const command = `echo "Server starting up..."
+      tcpserver -v -RHl0 ${options.host} ${options.port} \
+      photos http --timeout ${options.timeout} \
+      & echo $! > "${options.pid_file}"`;
+    // const command = `echo "Server starting up..."
+    //   tcpserver -v -RHl0 ${options.host} ${options.port} \
+    //   /Users/erik/dev/photos-server/photos-server/photos-server \
+    //   http_response ${options.timeout} \
+    //   & echo $! > "${options.pid_file}"`;
+    console.log(command);
+    $.system(command);
+  }
+}
+function server_stop(options) {
+  if (!server_is_running(options)) {
+    $.system('echo "Server is not running."');
+  } else {
+    $.system(`echo "Server stopping..."
+      pkill -F "${options.pid_file}" 2>/dev/null && rm "${options.pid_file}"`);
+  }
+}
+function server_wait(options) {
+  $.system(`sleep ${options.pause_seconds}`);
+}
+function server_status(options) {
+  if (server_is_running(options)) {
+    $.system(
+      `echo "Server running (pid $(cat "${options.pid_file}"))"`
+    );
+  } else {
+    $.system('echo "Server is stopped."');
+  }
+}
+function server_is_running(options) {
+  if ($.system(`test -f "${options.pid_file}"`) != 0) return false;
+  if ($.system(`pgrep -F "${options.pid_file}" >/dev/null`) == 0)
+    return true;
+  throw new Error("Bad pid file: " + options.pid_file);
+}
+
+// http response handler
+
+// void -> [ query, options ]
+// reads http request from stdin
+function read_http_request() {
+  const http_request = slurp_stdin();
+  const words = http_request.split(" ")[1].split("/");
+  const query = url_decode(words[1]);
+  const action = url_decode(words[2]);
+  return [query, { action: action }];
+}
+
+function serve_image(query, options) {
+  const temp_dir = options.tmpdir_prefix + random_chars();
+  try {
+    if (!query) throw http_error(404, "No query");
+    const export_status = $.system(
+      `photos export --timeout ${options.timeout} \
+      --filter ${quoted(options.filter)} \
+      ${quoted(query)} ${quoted(temp_dir)}`
+    );
+    log("export_status", export_status);
+    if (export_status == 15) throw http_error(500, "Timed out");
+    if (export_status != 0) throw http_error(404, "Not Found");
+    const filename = ls(temp_dir)
+      .filter((name) => name.slice(0, 1) != ".")
+      .shift();
+    if (!filename) throw http_error(500, "Nothing exported");
+    const absolute_filename = temp_dir + "/" + filename;
+    respond_with_file(filename, file_info(absolute_filename));
+  } catch (error) {
+    log(error, error.message, error.cause, error.stack);
+    switch (error.message) {
+      case "404":
+        respond_with_content(missing_svg, {
+          status: "404 Not Found",
+          filename: "missing.svg",
+          type: "image/svg+xml",
+        });
+        break;
+      default:
+      case "500":
+        respond_with_content(error_svg, {
+          status: "500 Internal Server Error",
+          filename: "error.svg",
+          type: "image/svg+xml",
+        });
+        break;
+    }
+  } finally {
+    $.system(`rm -rf ${temp_dir}`);
+  }
+}
+function http_error(status, message) {
+  return new Error(status, { cause: message });
+}
+
+function respond_with_file(filename, { path, size, type }) {
+  log(filename, path, size, type);
+  $.system(`cat <<'EOF'
+HTTP/1.1 202 OK
+Content-Disposition: inline; filename="${filename}"
+Content-Type: ${type}
+Content-Length: ${size}
+
+EOF
+cat "${path}"`);
+}
+function respond_with_content(content, { status, filename, type }) {
+  log(status, filename, type);
+  $.system(`cat <<'EOF'
+HTTP/1.1 ${status}
+Content-Disposition: inline; filename="${filename}"
+Content-Type: ${type}
+Content-Length: ${content.length}
+
+${content}
+EOF
+`);
+}
+
+missing_svg = `<?xml version="1.0" encoding="UTF-8"?>
+<!-- old school pixellated netscape broken image icon -->
+<!--
+  source: https://gist.github.com/diachedelic/cbb7fdd2271afa52435b7d4185e6a4ad
+  accessed: 2024-02-12
+-->
+<svg viewBox="0 0 14 16" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <g id="borders-and-backgrounds">
+    <path d="M0,0 L10,0 L10,1 L1,1 L1,15 L2,15 L2,16 L0,16 Z" fill="black"></path>
+    <path d="M10,4 l4,0 l0,3 l-1,0 l0,-2 l-3,0 Z" fill="black"></path>
+    <path d="M14,16 l0,-6 l-1,0 l0,5 l-5,0 l0,1 Z" fill="black"></path>
+    <path d="M12,14 l0,-3 l-1,0 l0,2 l-2,0 l0,1 Z" fill="#bcbcc3"></path>
+    <path d="M10,0 l1,0 l0,1 l1,0 l0,1 l1,0 l0,1 l1,0 l0,1 l-1,0 l0,-1 l-1,0 l0,-1 l-1,0 l0,2 l-1,0 Z" fill="#878787">
+    </path>
+    <path d="M2,2 l8,0 l0,3 l2,0 l0,2 l-4,0 l0,5 l-2,0 l0,1 l-2,0 l0,1 l-2,0 Z" fill="#bcbcc3"></path>
+  </g>
+  <g id="lefteye">
+    <path d="M5,3 l2,0 l0,3 l-3,0 l0,-2 l1,0 l0,1 l1,0 l0,-1 l-1,0 Z" fill="#00891e"></path>
+    <path d="M5,4 l1,0 l0,1 l-1,0 Z" fill="#00f248"></path>
+    <path d="M7,4 l1,0 l0,2 l-1,0 l0,1 l-2,0 l0,-1 l2,0 Z" fill="black"></path>
+  </g>
+  <g id="righteye">
+    <path d="M8,7 l3,0 l0,2 l-1,0 l0,-1 l-1,0 l0,1 l1,0 l0,1 l-2,0 Z" fill="#0064fb"></path>
+    <path d="M9,8 l1,0 l0,1 l-1,0 Z" fill="#00fbfe"></path>
+    <path d="M10,9 l1,0 l0,1 l-1,0 Z" fill="#003293"></path>
+    <path d="M11,7 l1,0 l0,2 l-1,0 Z" fill="black"></path>
+    <path d="M8,10 l2,0 l0,1 l-2,0 Z" fill="black"></path>
+  </g>
+  <g id="mouth">
+    <path d="M3,8 l1,0 l0,1 l1,0 l0,1 l1,0 l0,1 l1,0 l0,1 l-1,0 l0,-1 l-1,0 l0,-1 l-1,0 l0,-1 l-1,0 Z" fill="#ff3900">
+    </path>
+    <path d="M3,9 l1,0 l0,1 l1,0 l0,1 l1,0 l0,1 l-3,0 Z" fill="#f73ae1"></path>
+    <path d="M3,12 l3,0 l0,1 l-3,0 Z" fill="black"></path>
+  </g>
+</svg>
+`;
+error_svg = `<?xml version="1.0" encoding="UTF-8"?>
+<!--
+hand-coded and shaded svg by Erik Ben Heckman https://erik.heckman.ca
+of the original "Sad Mac" icon by Susan Kare https://kareprints.com
+-->
+<svg viewBox="0 0 37 37" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <g id="shading">
+    <path id="mask" fill="#f4f4f4" d="
+    M6,4 h25 v26 h-25 z M7,3 h23 v32 h-23 zM8,2 h 21 v 2 h-21 z"></path>
+    <path id="screen" fill="#fafafa" d="
+    M10,6 h17 v14 h-17 Z"></path>
+    <path id="plinth" fill="#ddd" d="
+    M8,31 h21 v 3 h-21 Z"></path>
+  </g>
+  <path id="lines" fill-rule="evenodd" fill="black" d="
+    M6,4 h25 v26 h-25 z M7,3 h23 v32 h-23 z M8,2 h 21 v 2 h-21 z M8,31 h21 v 3 h-21 Z
+    M10,5 h17 v16 h-17 z M9,6 h19 v14 h-19 Z
+    M13,9 h1 v3 h-1 v-1 h3 v1 h-1 v-3 h1 v1 h-3 Z
+    M21,9 h1 v3 h-1 v-1 h3 v1 h-1 v-3 h1 v1 h-3 Z
+    M16,13 h1 v2 h2 v-2 h1 v1 h-4 Z
+    M16,16 h5 v2 h3 v1 h-1 v-2 h-8 v 1 h 1 Z
+    M9,26 h2 v1 h-2 Z
+    M21,25 h6 v1 h-6 Z"></path>
+</svg>
+`;
+
+// Helper functions
+
+// Halts execution to read a line from stdin, then returns the
+// contents as a string, interpreted, by default, as UTF-8
+// if run is interactively, it will stop reading at a newline
+function slurp_stdin(encoding = $.NSUTF8StringEncoding) {
+  return ObjC.unwrap(
+    $.NSString.alloc.initWithDataEncoding(
+      $.NSFileHandle.fileHandleWithStandardInput.availableData,
+      encoding
+    )
+  );
+}
+
+function file_info(filename) {
+  const app = Application.currentApplication();
+  app.includeStandardAdditions = true;
+  const file_size = app.doShellScript("stat -f'%z' " + filename);
+  const file_type = app.doShellScript(
+    "file -b --mime-type " + filename
+  );
+  return { path: filename, size: file_size, type: file_type };
+}
+
+function ls(dir) {
+  return ObjC.unwrap(
+    $.NSFileManager.defaultManager.contentsOfDirectoryAtPathError(
+      $(dir).stringByExpandingTildeInPath,
+      null
+    )
+  ).map(ObjC.unwrap);
+}
+
+// 124 bits of entropy in 24 characters
+function random_chars() {
+  return (Math.pow(36, 24) * Math.random())
+    .toString(36)
+    .toUpperCase()
+    .padStart(24, "0");
+}
+
+// quotes strings for the shell command line
+function quoted(...unquoted) {
+  return unquoted
+    .map((q) => "'" + String(q).replaceAll("'", "'\"'\"'") + "'")
+    .join(" ");
+}
+
+function url_decode(text) {
+  return ObjC.unwrap($.NSURL.URLWithString(text).path);
 }
