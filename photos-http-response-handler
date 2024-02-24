@@ -49,8 +49,8 @@ dispatch_request(){
   op="$(url_decode "$2")"
   log "path: %s  op: %s\n" "$path" "$op"
   case "$op" in
-    "open") open "$path" & serve "$path";; # might be different photos!
-      *) serve "$path";;
+    "open") serve "$path" "--open --timeout $timeout_seconds";;
+    *) serve "$path" "--timeout $timeout_seconds";;
   esac
 }
 
@@ -60,6 +60,8 @@ open(){
 }
 
 serve(){
+  path="$1"
+  options="$2"
 	# shellcheck disable=SC2064   # we want tmpdir expanded now!
 	tmpdir=$(mktemp -d -t $temp_template) && trap "rm -rf '$tmpdir'" EXIT
   log "tmpdir: %s\n" "$tmpdir"
@@ -67,7 +69,7 @@ serve(){
 	# shellcheck disable=SC2086
 	# timeout $timeout_seconds photos export --timeout 0 "$1" "$tmpdir" || error $?
 	# shellcheck disable=SC2086
-	photos export --timeout $timeout_seconds "$1" "$tmpdir" >/dev/null || error $?
+	photos export $options "$1" "$tmpdir" >/dev/null || error $?
 
 	filename="$(a_file_in "$tmpdir")" || error $ERR_EXPORT
 	filesize="$(stat -f'%z' "$filename")"

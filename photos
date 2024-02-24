@@ -44,27 +44,30 @@ commands.ids = {
   },
 };
 commands.export = {
-  options: { ...commands.id.options, original: false },
+  options: { ...commands.id.options, original: false, open: false },
   description: "Export matching media item from Photos.app",
   do: function (arguments, options) {
     const destination = Path(arguments.pop());
     const item = matching_item(arguments.join(" "), options);
-    return Application("Photos").export([item], {
+    Application("Photos").export([item], {
       to: destination,
       usingOriginals: options.original,
     });
+    if (options.open) open_item(item);
   },
 };
 commands.open = {
   options: { ...commands.id.options },
-  description: "Open a media item from Photos.app",
+  description: "Open matching media item in Photos.app",
   do: function (arguments, options) {
-    Application("Photos").spotlight(
-      matching_item(arguments.join(" "), options)
-    );
-    Application("Photos").activate();
+    open_item(matching_item(arguments.join(" "), options));
   },
 };
+
+function open_item(item) {
+  Application("Photos").spotlight(item);
+  Application("Photos").activate();
+}
 
 // query -> media item; throws an error if not found
 function matching_item(query, options) {
