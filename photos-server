@@ -206,7 +206,7 @@ make_temporary_directory(){ local photo_id="$1"
 	temp_dir="${TMPDIR}${app_id}-${photo_id}"
 	mkdir -p "$temp_dir"
 	# shellcheck disable=SC2064 # it's a trap! (expand now)
-	trap 'rm -rf "$temp_dir"' EXIT
+	trap "rm -rf '$temp_dir'" EXIT
 	echo "$temp_dir"
 }
 
