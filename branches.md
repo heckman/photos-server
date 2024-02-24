@@ -2,6 +2,10 @@
 
 In the development of this project several implementations have been attempted. These various versions are in the branches listed below. This might not be the best way to structure a repository but here we are.
 
+## `main`
+
+I've adopted `sh/tcpserver/micro` as the main branch, for now.`
+
 ## Shell approach
 
 ### `sh/netcat`
@@ -34,7 +38,7 @@ Is comprised of three files:
 
 ## `JAX` JavaScript-for-Automation (osascript) approach
 
-### `JXA/lib` (abandonned)
+### `JXA/lib`
 
 Abandonned 2024-02-22 in favour of putting all the `JXA` code in a
 single file. (Last commit `1ba15e7`.)
@@ -53,7 +57,7 @@ This is definitely not the way to go, but has improved my JXA skills!
 The current version of `JXA` server implementation.
 
 This also contains the best version of `JXA` code for accessing the
-Photos.app.
+Photos.app, most of which has since been copied to the `main` branch.
 
 Another re-write of the `JAX` approach, but rather than multiple
 libraries, everything is in a single file. Including the server control
