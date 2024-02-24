@@ -2,8 +2,12 @@
 // SPDX-FileCopyrightText: 2024 Erik Ben Heckman
 // SPDX-PackageDownloadLocation: git://github.com/heckman/photos-server
 // SPDX-License-Identifier: GPL-3.0-only
-
-const program = "photos";
+//
+//
+//  photos
+//
+//
+// command-line interface to the applescript functions of Apple Photos
 
 const usage = `
 

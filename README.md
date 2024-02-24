@@ -73,3 +73,14 @@ The first two implementations make use of external scripts written in
 `JXA` to communicate with Apple Photos. The third incorporates these
 functions into a single script that also encapsulates the server powered
 by `tcpserver`.
+
+The `tcpserver` branch has been adopted as main for publication.
+
+## License
+
+This project is shared under the GNU v3.0 General Public License, except for the two
+SVGs embedded in the server, whose copyrights are not held by me:
+
+- The 'broken image' icon was created for Netscape Navigatorby Marsh Chamberlin (<https://dataglyph.com>). The SVG code, [found here](https://gist.github.com/diachedelic/cbb7fdd2271afa52435b7d4185e6a4ad), was hand-coded by github user [diachedelic](https://gist.github.com/diachedelic).
+
+- The 'sad mac' icon was created for Apple Inc. by Susan Kare (<https://kareprints.com>). I hand-crafted the SVG code.

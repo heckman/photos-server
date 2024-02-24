@@ -1,6 +1,11 @@
 #!/bin/dash
+# SPDX-FileCopyrightText: 2024 Erik Ben Heckman
+# SPDX-PackageDownloadLocation: git://github.com/heckman/photos-server
+# SPDX-License-Identifier: GPL-3.0-only
 #
-#  photos-http-response-handler
+#
+#   photos-http-response-handler
+#
 #
 # Serves photos from Apple Photos.
 
