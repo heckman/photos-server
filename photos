@@ -69,14 +69,8 @@ commands.open = {
 // query -> media item; throws an error if not found
 function matching_item(query, options) {
   const items = matching_items(query, options);
-  switch (items.length) {
-    case 0:
-      throw new Error("No matching items found.");
-    case 1:
-      return items[0];
-    default:
-      return random_member_of(items);
-  }
+  if (items.length) return random_member_of(items);
+  throw new Error("No matching items found.");
 }
 
 // query -> array of media items;
