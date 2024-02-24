@@ -10,7 +10,7 @@
 # The server requires `tcpserver`, and the hanlder needs `trurl`.
 # Both are available via HomeBrew.
 
-requirements="tcpserver trurl"   # both available via homebrew
+requirements="grealpath tcpserver trurl"   # all available via homebrew
 
 host="127.0.0.1"
 port=6330
@@ -20,9 +20,7 @@ timeout_seconds="${2:-1}" # default is 1 second
 
 tcpserver_pid_file="${TMPDIR}ca.heckman.photos-server.tcpserver.pid"
 
-this_script="$(realpath "$0")" #should be good enough for now
-this_dir="$(dirname "$this_script")"
-http_handler="$this_dir/photos-http-response-handler"
+http_handler="$(dirname "$(grealpath -e "$0")")/../libexec/photos-http-response-handler"
 
 stdlog=/dev/stderr
 
@@ -117,7 +115,10 @@ log(){ if test -z "$1"; then cat - >$stdlog; else printf -- "-> $*" >$stdlog; fi
 
 for requirement in $requirements
 do
-	type "$requirement" >/dev/null || exit 3
+	type "$requirement" >/dev/null || {
+		echo "missing requirement: $requirement" >&2
+		exit 3
+		}
 done
 
 main "$@"
