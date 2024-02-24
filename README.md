@@ -38,8 +38,6 @@ the default is 1 second. Setting this to 0 seconds disables the timeout.
 
 ### Installation
 
-There is no automated installation.
-
 The utilities `tcpserver` and `trurl` are required. Both are avaiable
 via homebrew.
 
@@ -49,6 +47,9 @@ to suit. I reccomend putting `photos` on your path, so you can make use
 of its utilities, and putting `photos-http-response-handler` somewhere
 more out of the way, as it's not intended to be called from the command
 line.
+
+There is an script called `install.sh` which will copy these files where
+I like to put them. Don't run it until you've grokked its source code.
 
 ## Command-line tools
 
