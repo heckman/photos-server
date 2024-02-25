@@ -20,6 +20,16 @@ requirements="grealpath tcpserver trurl"   # all available via homebrew
 host="127.0.0.1"
 port=6330
 
+# redefine host and port if they are defined elsewhere:
+if test -f "$HOME/Library/Script Libraries/Photos Commands.scpt"
+then
+	host="$(/usr/bin/osascript -l JavaScript -e '
+		Library("Photos Commands").server_host()' 2>/dev/null || echo $host)"
+	port="$(/usr/bin/osascript -l JavaScript -e '
+		Library("Photos Commands").server_port()' 2>/dev/null || echo $port)"
+fi
+
+
 tcpserver_options="-v -RHl0" # this will undergo whitespace splitting
 timeout_seconds="${2:-1}" # default is 1 second
 
