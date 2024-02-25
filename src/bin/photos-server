@@ -37,18 +37,21 @@ tcpserver_pid_file="${TMPDIR}ca.heckman.photos-server.tcpserver.pid"
 
 http_handler="$(dirname "$(grealpath -e "$0")")/../libexec/photos-http-response-handler"
 
-stdlog=/dev/stderr
-
 
 usage(){ echo "USAGE:
 
 photos-server command [args]
 
+Commands to manage an HTTP server on port $host:$port.
+
     start [<timeout>]
     stop
     restart [<timeout>]
     status
-        Commands to manage an HTTP server on port $port.
+
+
+	http_response <url> [<timeout>]
+		Commands to manage an HTTP server on port $port.
 
 The argument timeout, measured in seconds, specifies how long to
 wait for Photos.app to return with results of a query. The default
@@ -67,13 +70,16 @@ main(){ local cmd="$1"; shift
 	esac
 }
 
+log(){ echo "photo-server: $*"; }
+err(){ log "$*" >&2; }
 
 #### server control
+
 
 start(){
 	if is_running
 	then
-		echo "already running"
+		log "already running"
 	else
 		# shellcheck disable=SC2086
 		tcpserver $tcpserver_options $host $port "$http_handler" "$timeout_seconds"&
@@ -88,9 +94,13 @@ restart(){ stop; pause; start "$@";}
 status(){
 	if is_running
 	then
-		echo "running: pid: $(cat "$tcpserver_pid_file"), timeout: $timeout_seconds"
+		log running: \
+			host: "$host", \
+			port: "$port", \
+			pid: "$(cat "$tcpserver_pid_file")", \
+			timeout: "$timeout_seconds"
 	else
-		echo "stopped"
+		log "stopped"
 	fi
 }
 
@@ -102,9 +112,8 @@ terminate_process(){
 		true
 		return
 	else
-		printf "invalid pid in pid file: " >&2
-		cat "$tcpserver_pid_file" >&2
-		echo "removing pid file: $tcpserver_pid_file" >&2
+		err "invalid pid in pid file: $(cat "$tcpserver_pid_file")"
+		err "removing pid file: $tcpserver_pid_file"
 		rm "$tcpserver_pid_file"
 		false
 		return
@@ -125,13 +134,11 @@ is_running(){
 	false
 }
 
-# shellcheck disable=SC2059
-log(){ if test -z "$1"; then cat - >$stdlog; else printf -- "-> $*" >$stdlog; fi; }
 
 for requirement in $requirements
 do
 	type "$requirement" >/dev/null || {
-		echo "missing requirement: $requirement" >&2
+		err "missing requirement: $requirement"
 		exit 3
 		}
 done
