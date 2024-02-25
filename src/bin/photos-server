@@ -15,10 +15,17 @@
 # The server requires `tcpserver`, and the hanlder needs `trurl`.
 # Both are available via HomeBrew.
 
-requirements="grealpath tcpserver trurl"   # all available via homebrew
+REQUIREMENTS="grealpath tcpserver trurl"   # all available via homebrew
+
+HTTP_HANDLER="$(dirname "$(grealpath -e "$0")")/../libexec/photos-http-response-handler"
 
 DEFAULT_HOST="127.0.0.1"
 DEFAULT_PORT=6330
+
+TCPSERVER_OPTIONS="-v -RHl0" # this will undergo whitespace splitting
+TIMEOUT_SECONDS="${2:-1}" # default is 1 second
+
+TCPSERVER_PID_FILE="${TMPDIR}ca.heckman.photos-server.tcpserver.pid"
 
 # redefine host and port if they are defined elsewhere:
 #
@@ -32,24 +39,15 @@ then
 		/usr/bin/osascript -l JavaScript -e '
 			Library("Photos Commands").server_'"$1"'()' 2>/dev/null
 	}
-	host="$(from_osa_script host || echo $DEFAULT_HOST)"
-	port="$(from_osa_script port || echo $DEFAULT_PORT)"
+	HOST="$(from_osa_script host || echo $DEFAULT_HOST)"
+	PORT="$(from_osa_script port || echo $DEFAULT_PORT)"
 fi
-
-
-tcpserver_options="-v -RHl0" # this will undergo whitespace splitting
-timeout_seconds="${2:-1}" # default is 1 second
-
-tcpserver_pid_file="${TMPDIR}ca.heckman.photos-server.tcpserver.pid"
-
-http_handler="$(dirname "$(grealpath -e "$0")")/../libexec/photos-http-response-handler"
-
 
 usage(){ echo "USAGE:
 
 photos-server command [args]
 
-Commands to manage an HTTP server on port $host:$port.
+Commands to manage an HTTP server on port $HOST:$PORT.
 
     start [<timeout>]
     stop
@@ -58,7 +56,7 @@ Commands to manage an HTTP server on port $host:$port.
 
 
 	http_response <url> [<timeout>]
-		Commands to manage an HTTP server on port $port.
+		Commands to manage an HTTP server on port $PORT.
 
 The argument timeout, measured in seconds, specifies how long to
 wait for Photos.app to return with results of a query. The default
@@ -89,8 +87,8 @@ start(){
 		log "already running"
 	else
 		# shellcheck disable=SC2086
-		tcpserver $tcpserver_options $host $port "$http_handler" "$timeout_seconds"&
-		echo $! > "$tcpserver_pid_file"
+		tcpserver $TCPSERVER_OPTIONS $HOST $PORT "$HTTP_HANDLER" "$TIMEOUT_SECONDS"&
+		echo $! > "$TCPSERVER_PID_FILE"
 		pause
 		status
 	fi
@@ -102,47 +100,47 @@ status(){
 	if is_running
 	then
 		log running: \
-			host: "$host", \
-			port: "$port", \
-			pid: "$(cat "$tcpserver_pid_file")", \
-			timeout: "$timeout_seconds"
+			host: "$HOST", \
+			port: "$PORT", \
+			pid: "$(cat "$TCPSERVER_PID_FILE")", \
+			timeout: "$TIMEOUT_SECONDS"
 	else
 		log "stopped"
 	fi
 }
 
 terminate_process(){
-	test -f "$tcpserver_pid_file" || return
-	if pkill -F "$tcpserver_pid_file" 2>/dev/null
+	test -f "$TCPSERVER_PID_FILE" || return
+	if pkill -F "$TCPSERVER_PID_FILE" 2>/dev/null
 	then
-		rm "$tcpserver_pid_file"
+		rm "$TCPSERVER_PID_FILE"
 		true
 		return
 	else
-		err "invalid pid in pid file: $(cat "$tcpserver_pid_file")"
-		err "removing pid file: $tcpserver_pid_file"
-		rm "$tcpserver_pid_file"
+		err "invalid pid in pid file: $(cat "$TCPSERVER_PID_FILE")"
+		err "removing pid file: $TCPSERVER_PID_FILE"
+		rm "$TCPSERVER_PID_FILE"
 		false
 		return
 	fi
 }
 
 is_running(){
-	if test -f "$tcpserver_pid_file"
+	if test -f "$TCPSERVER_PID_FILE"
 	then
-		if pgrep -F "$tcpserver_pid_file" >/dev/null
+		if pgrep -F "$TCPSERVER_PID_FILE" >/dev/null
 		then
 			true
 			return
 		else
-			rm "$tcpserver_pid_file"
+			rm "$TCPSERVER_PID_FILE"
 		fi
 	fi
 	false
 }
 
 
-for requirement in $requirements
+for requirement in $REQUIREMENTS
 do
 	type "$requirement" >/dev/null || {
 		err "missing requirement: $requirement"
