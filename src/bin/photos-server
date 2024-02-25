@@ -33,14 +33,19 @@ TCPSERVER_PID_FILE="${TMPDIR}ca.heckman.photos-server.tcpserver.pid"
 # the current selection in Apple Photos. It need to know the
 # url to use, so that information is defined there.
 #
-if test -f "$HOME/Library/Script Libraries/Photos Commands.scpt"
+#
+OSA_SCRIPT_LIBRARY="Photos Functions"
+if test -f "$HOME/Library/Script Libraries/$OSA_SCRIPT_LIBRARY.scpt"
 then
-	from_osa_script(){
-		/usr/bin/osascript -l JavaScript -e '
-			Library("Photos Commands").server_'"$1"'()' 2>/dev/null
+	osa_script(){
+		/usr/bin/osascript -l JavaScript -e "
+			Library('$OSA_SCRIPT_LIBRARY').server_$1()" 2>/dev/null
 	}
-	HOST="$(from_osa_script host || echo $DEFAULT_HOST)"
-	PORT="$(from_osa_script port || echo $DEFAULT_PORT)"
+	HOST="$(osa_script host || echo $DEFAULT_HOST)"
+	PORT="$(osa_script port || echo $DEFAULT_PORT)"
+else
+	HOST="$DEFAULT_HOST"
+	PORT="$DEFAULT_PORT"
 fi
 
 usage(){ echo "USAGE:
@@ -87,6 +92,7 @@ start(){
 		log "already running"
 	else
 		# shellcheck disable=SC2086
+		log "tcpserver $TCPSERVER_OPTIONS $HOST $PORT "$HTTP_HANDLER" "$TIMEOUT_SECONDS"&"
 		tcpserver $TCPSERVER_OPTIONS $HOST $PORT "$HTTP_HANDLER" "$TIMEOUT_SECONDS"&
 		echo $! > "$TCPSERVER_PID_FILE"
 		pause
