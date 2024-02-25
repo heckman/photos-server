@@ -17,16 +17,23 @@
 
 requirements="grealpath tcpserver trurl"   # all available via homebrew
 
-host="127.0.0.1"
-port=6330
+DEFAULT_HOST="127.0.0.1"
+DEFAULT_PORT=6330
 
 # redefine host and port if they are defined elsewhere:
+#
+# I've got an osa script that generates markdown links from
+# the current selection in Apple Photos. It need to know the
+# url to use, so that information is defined there.
+#
 if test -f "$HOME/Library/Script Libraries/Photos Commands.scpt"
 then
-	host="$(/usr/bin/osascript -l JavaScript -e '
-		Library("Photos Commands").server_host()' 2>/dev/null || echo $host)"
-	port="$(/usr/bin/osascript -l JavaScript -e '
-		Library("Photos Commands").server_port()' 2>/dev/null || echo $port)"
+	from_osa_script(){
+		/usr/bin/osascript -l JavaScript -e '
+			Library("Photos Commands").server_'"$1"'()' 2>/dev/null
+	}
+	host="$(from_osa_script host || echo $DEFAULT_HOST)"
+	port="$(from_osa_script port || echo $DEFAULT_PORT)"
 fi
 
 
