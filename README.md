@@ -61,7 +61,7 @@ file `photos`.
 ## Implementation
 
 There are several different implementations, each with their own branch.
-See [branches.md](./branches.md) for more details.
+See [branches.md](./VERSIONS) for more details.
 
 Three are in (somewhat) active development:
 
