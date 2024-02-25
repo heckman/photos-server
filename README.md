@@ -38,18 +38,30 @@ the default is 1 second. Setting this to 0 seconds disables the timeout.
 
 ### Installation
 
-The utilities `tcpserver` and `trurl` are required. Both are avaiable
-via homebrew.
+#### Dependencies
 
-There are three files to install, they can pretty-much go wherever you
-want, as long as `photos-server` can find the other two, edit its code
-to suit. I reccomend putting `photos` on your path, so you can make use
-of its utilities, and putting `photos-http-response-handler` somewhere
-more out of the way, as it's not intended to be called from the command
-line.
+The utilities `tcp-server` and `trurl` are required. Both are avaiable
+via homebrew from the `ucspi-tcp` and `trurl` formulae respecrively. The
+`greadlink` and `realpath` commands are also required; they are
+available in the `coreutils` homebrew formula.
+
+#### Source files
+
+There are three files to install:
+
+- `photos`, which contains functions that access the Photos Application.
+- `photos-server`, which manages the operations of the server.
+- `photos-http-response-handler`, which generates responses to HTTP
+  requests sent to the server.
+
+They can be put anywhere as long as they can find each-other. `photos-server` expects `photos-http-response-handler` to be in `../libexec`, and `photos-http-response-handler`
+expects `photos` to be on the PATH. Edit these expectations in the code as required.
+
+#### Automation
 
 There is an script called `install.sh` which will copy these files where
-I like to put them. Don't run it until you've grokked its source code.
+I like to put them. Don't run it unless you've grokked its source code
+and edited to suit your environment.
 
 ## Command-line tools
 
