@@ -4,7 +4,7 @@ In the development of this project several implementations have been attempted. 
 
 ## `main`
 
-I've adopted `sh/tcpserver/micro` as the main branch, for now.`
+I've adopted `sh/tcpserver/micro` as the main branch. The versions describe below should all be considered stale.
 
 ## Shell approach
 

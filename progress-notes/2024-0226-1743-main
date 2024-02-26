@@ -1,0 +1,23 @@
+# 2024-02-26 17:43:37 Progress Note
+
+I've adopted the `sh/tcpserver/micro` branch as main.
+
+I'm attracted to the versions that encapsulate all the functions into
+one file, because it would be easier to distribute, but distribution is
+not my goal, as this is a project for my own use.
+
+Having the code split into three files makes it easier to code. I might
+consider even extracting the svg code into separate files.
+
+I seem to be falling into the trap of pre-mature optimization.
+
+On that note, I've been writing all of my shell scripts in POSIX shell,
+for portability, I suppose, but this whole project is specifically for
+MacOS, so I might as well use the BASH shell included with that; on my
+system /bin/bash is version 3.2.57. But since I'm requiring commands to
+be installed via homebrew, I could easily require a newer version of
+bash.
+
+Actually, I've been writing for `dash`. I'm not going to change that
+now, but if I feel like using bashisms in the future I won't hesitate to
+change that.
