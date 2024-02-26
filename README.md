@@ -49,13 +49,16 @@ available in the `coreutils` homebrew formula.
 
 There are three files to install:
 
-- `photos`, which contains functions that access the Photos Application.
+- `photos-cli`, which contains functions that access the Photos
+  Application.
 - `photos-server`, which manages the operations of the server.
 - `photos-http-response-handler`, which generates responses to HTTP
   requests sent to the server.
 
-They can be put anywhere as long as they can find each-other. `photos-server` expects `photos-http-response-handler` to be in `../libexec`, and `photos-http-response-handler`
-expects `photos` to be on the PATH. Edit these expectations in the code as required.
+They can be put anywhere as long as they can find each-other.
+`photos-server` expects `photos-http-response-handler` to be in
+`../libexec`, and `photos-http-response-handler` expects `photos-cli` to
+be on the PATH. Edit these expectations in the code as required.
 
 #### Automation
 
@@ -68,7 +71,7 @@ and edited to suit your environment.
 Several command-line functions to interact with Apple Photos were
 created in the implementation of this server. They may be extracted to
 their own repository in the future. Currently they are included in the
-file `photos`.
+file `photos-cli`.
 
 ## Implementation
 
@@ -86,13 +89,20 @@ The first two implementations make use of external scripts written in
 functions into a single script that also encapsulates the server powered
 by `tcpserver`.
 
-The `tcpserver` branch has been adopted as main for publication.
+The `sh/tcpserver` branch has been adopted as `main` for publication.
+The other two versions have become stale.
 
 ## License
 
-This project is shared under the GNU v3.0 General Public License, except for the two
-SVGs embedded in the server, whose copyrights are not held by me:
+This project is shared under the GNU v3.0 General Public License, except
+for the two SVGs embedded in the `photos-server`, whose copyrights are not held
+by me:
 
-- The 'broken image' icon was created for Netscape Navigatorby Marsh Chamberlin (<https://dataglyph.com>). The SVG code, [found here](https://gist.github.com/diachedelic/cbb7fdd2271afa52435b7d4185e6a4ad), was hand-coded by github user [diachedelic](https://gist.github.com/diachedelic).
+- The 'broken image' icon was created for Netscape Navigatorby Marsh
+  Chamberlin (<https://dataglyph.com>). The SVG code,
+  [found here](https://gist.github.com/diachedelic/cbb7fdd2271afa52435b7d4185e6a4ad),
+  was hand-coded by github user
+  [diachedelic](https://gist.github.com/diachedelic).
 
-- The 'sad mac' icon was created for Apple Inc. by Susan Kare (<https://kareprints.com>). I hand-crafted the SVG code.
+- The 'sad mac' icon was created for Apple Inc. by Susan Kare (<https://kareprints.com>).
+  I hand-crafted the SVG code.
