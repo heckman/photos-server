@@ -66,6 +66,41 @@ commands.open = {
     open_item(matching_item(arguments.join(" "), options));
   },
 };
+commands.album = {
+  options: {
+    ...commands.id.options,
+    filter: ".",
+    name: "",
+    open: false,
+  },
+  description:
+    "Create an album in Photos.app from matching media items",
+  do: function (arguments, options) {
+    if (!options.name) {
+      options.name =
+        "ALBUM-" +
+        Date.now() +
+        (Math.random() + 1).toString(36).substring(7);
+    }
+    const album = create_album(options.name);
+    const items = arguments.flatMap((arg) =>
+      matching_items(arg, options)
+    );
+    log(items.map((item) => item.id()));
+    add_to_album(album, ...items);
+    if (options.open) open_item(album);
+  },
+};
+
+function create_album(name) {
+  return Application("Photos").make({ new: "album", named: name });
+}
+function add_to_album(album, ...items) {
+  log(album.id());
+  log(items.map((item) => item.id()));
+
+  return Application("Photos").add(items, { to: album });
+}
 
 function open_item(item) {
   Application("Photos").spotlight(item);
@@ -95,6 +130,7 @@ function matching_items(query, options) {
 
 // uuid -> media item; throws an error if UUID is not found
 function item_by_id(uuid) {
+  log(uuid);
   return Application("Photos").mediaItems.byId(uuid);
 }
 
