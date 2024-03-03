@@ -4,6 +4,10 @@ Serves photos from the [Apple
 Photos](https://apps.apple.com/app/photos/id1584215428) application
 locally on your Mac.
 
+**THIS IS PROJECT IS IN A STATE OF WILD FLUX**
+
+Expect breaking changes throughout.
+
 ## Usage
 
 ### Client
