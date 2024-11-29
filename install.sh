@@ -22,7 +22,7 @@ install(){
 	install_file src/ca.heckman.photos-server-init.plist "$LIBRARY/LaunchAgents"
 	install_file src/photos-cli "$PREFIX/bin" true
 	install_file src/photos-http-response-handler "$PREFIX/libexec" true
-	echo "edit the file '/etc/hosts' containts the line:
+	echo "edit the file '/etc/hosts' to include the line:
 127.0.63.30     photos"
 }
 
