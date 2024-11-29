@@ -55,8 +55,9 @@ main(){
 }
 
 dispatch_request(){ local request_url="$1" path op
-  path="$($TRURL --get '{path}' "stub.domain/$request_url" | sed 's|^/||')"
-  op="$($TRURL --get '{query}' "stub.domain/$request_url")"
+  path="$($TRURL --get '{path}' "stub.domain/${request_url#/}" | sed 's|^/||')"
+  op="$($TRURL --get '{query}' "stub.domain/${request_url#/}")"
+  # echo "request_url: $request_url, path: $path, op: $op"; exit
   case "$op" in
   "open")
     serve "$path" "--open" ;;
