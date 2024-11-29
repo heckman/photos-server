@@ -1,9 +1,0 @@
-#!/bin/sh
-REPO_ROOT="$(git rev-parse --show-toplevel)"
-TO_WATCH="$REPO_ROOT/src"
-
-photos-server restart
-echo "watch: watching for changes in '$TO_WATCH'"
-fswatch -0 "$TO_WATCH" \
-| xargs -0 -I{} photos-server restart
-
