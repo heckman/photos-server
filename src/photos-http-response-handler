@@ -1,6 +1,7 @@
 #!/bin/dash
 # Copyright (c) 2024 Erik Ben Heckman, shared under the GPL-3.0 license
 # <https://github.com/heckman/photos-server>
+# except where otherwise noted
 #
 #
 #  photos-http-response-handler
@@ -126,6 +127,8 @@ log(){
 missing_svg='<?xml version="1.0" encoding="UTF-8"?>
 <!-- old school pixellated netscape broken image icon -->
 <!--
+  icon created for Netscape Navigator by Marsh Chamberlin (https://dataglyph.com)
+  SVG hand-coded by github user diachedelic (https://gist.github.com/diachedelic)
   source: https://gist.github.com/diachedelic/cbb7fdd2271afa52435b7d4185e6a4ad
   accessed: 2024-02-12
 -->
@@ -159,10 +162,12 @@ missing_svg='<?xml version="1.0" encoding="UTF-8"?>
   </g>
 </svg>
 '
+
 error_svg='<?xml version="1.0" encoding="UTF-8"?>
 <!--
-hand-coded svg by Erik Ben Heckman https://erik.heckman.ca
-of the original "Sad Mac" icon by Susan Kare https://kareprints.com
+The "Sad Mac" icon was created for Apple Inc. by Susan Kare https://kareprints.com
+The SVG was hand-coded Erik Ben Heckman https://erik.heckman.ca
+and can be found embedded in the code for https://github.com/heckman/photos-server
 -->
 <svg viewBox="0 0 37 37" version="1.1" xmlns="http://www.w3.org/2000/svg">
   <path id="mask" fill="#ffffff" d="
