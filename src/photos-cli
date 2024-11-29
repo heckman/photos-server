@@ -24,12 +24,16 @@ const options = {
 };
 var commands = {};
 commands.id = {
-  options: { full: false, filter: "\\.(jpeg|jpg|heic)$", timeout: 1 },
+  options: {
+    full: false,
+    filter: "\\.(heic|heif|jpeg|jpg|tiff|gif|png)$",
+    timeout: 1,
+  },
   description:
     "Return UUIDs of one randomly selected matching Photos.app media item." +
     "Throw an error is none are found",
   usage:
-    "photos id [-full ][--filter <regex> ][--timeout <seconds>] query",
+    "photos id [-full ][--filter <case-insensitive-regex> ][--timeout <seconds>] query",
   do: function (arguments, options) {
     const item = matching_item(arguments.join(" "), options);
     return options.full ? item.id() : item.id().slice(0, 36);

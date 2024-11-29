@@ -21,7 +21,7 @@ Make a HTTP request to `http://photos/<query>[/open]...
   returned. If it is not but looks like a UUID you'll get a _404_ error.
 - Otherwise, Apple Photos will perform a search for `<query>`, and of the
   results, a random photo will be returned. Results will be limited to
-  JPEG and HEIC files (no movies or other image formats).
+  HEIC, HEIF, JPG, JPEG, TIFF, GIF and PNG files. (No RAW images or videos.)
 - If the search produces no valid results, you'll get a _404_.
 - If the search takes too long you'll get a _500_ error. (Try narrowing
   your search terms.)
