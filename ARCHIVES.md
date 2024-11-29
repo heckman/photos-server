@@ -1,14 +1,13 @@
-# Archive Branches
+# Archived Branches
 
 In the development of this project several implementations were attempted.
-These various versions are in the archived branches listed below.
+These various approaches are in the archived branches listed below.
 This might not be the best way to structure a repository but here we are.
 
 The descriptions below are quite old, circa February 2024.
 
-## `main`
-
-I've further developped `archive/sh/tcpserver/micro` as the main branch.
+Note that the branches marked "(active)" are not in fact active.
+They are, however, the latest development for each approach.
 
 ## Shell approach
 
@@ -30,9 +29,9 @@ their own files. (Last commit `212f229`.)
 Offshoot of the `netcat` branch, uses `tcpserver` instead of `netcat`.
 JXA scripts are still embedded in the shell script.
 
-### `archive/sh/tcpserver/micro`
+### `archive/sh/tcpserver/micro` (active) (merged into main)
 
-This approach was adopted and merged into the main branch.
+This approach was adopted and further developped as the main branch.
 
 Is comprised of three files:
 
@@ -76,7 +75,7 @@ The script is structured in such a way that it is easy to add additional
 functions. It could eventually provide a command-line interface to all
 scriptable endpoints of the Photos application.
 
-## `archive/bun` approach
+## `bun` approach
 
 Using the `bun` runtime to write as much as possible in javascript.
 
@@ -89,7 +88,7 @@ that both parts are written in javascript offers no advantage.
 
 ### `archive/bun/sync`
 
-Abandonned on 2024-02-13 in favour of asynchronous approach.
+Abandoned on 2024-02-13 in favour of asynchronous approach.
 
 Latest commit c4b1d7fd53d9b4aa4244dcd6d899788c1f272e01 as of 2024-02-22
 
@@ -103,7 +102,7 @@ the self-terminating `get-photo-id` subprocesses.
 
 ### `archive/bun/await`
 
-Abandonned on 2024-02-15 in favour of `.then`/`.catch` style.
+Abandoned on 2024-02-15 in favour of `.then`/`.catch` style.
 
 Re-implementation using asynchronous functions, mostly using
 await--everywhere except for in the primary request-handling function,
@@ -115,7 +114,7 @@ Can't remove temporary files after returning http response
 
 ### `archive/js/bun/then.catch` (active)
 
-Latest version of javscript server implementation.
+Latest version of javascript server implementation.
 
 Removed all await operators, and instead use the .then/.catch construct
 throughout. I prefer reading the code written in this manner; it feels
@@ -125,7 +124,7 @@ more like functional programming.
 
 Can't remove temporary files after returning http response
 
-## `nodeautomation` approach (abandonned)
+## `nodeautomation` approach (abandoned)
 
 This approach was abandoned on 2024-02-22.
 
@@ -146,9 +145,9 @@ After making changes to the server code incorporating the `nodeautomation` libra
 
 ### `archive/nodeautomation/express`
 
-So I replaced `bun` with `node`, and used the `express` http server library. Before introducting the `nodeautomation` code, when testing the server, it seemed quite slow. Taking a closer look, it was taking about 3.5 seconds to respond to a request, while
+So I replaced `bun` with `node`, and used the `express` http server library. Before introducing the `nodeautomation` code, when testing the server, it seemed quite slow. Taking a closer look, it was taking about 3.5 seconds to respond to a request, while
 bot the `bun` and `sh` servers typically respond on the order of 1 to 1.25 seconds.
 
 ### `archive/nodeautomation/fastify`
 
-Thinking it might be because the `express` library is overkill, I attempted to replace it with the `fastify` library. It was a mess, I had problems with typescript, and I gavae up.
+Thinking it might be because the `express` library is overkill, I attempted to replace it with the `fastify` library. It was a mess, I had problems with typescript, and I gave up.
