@@ -34,7 +34,7 @@ Is comprised of three files:
 
 - `photos`: `JXA` code for interacting with Apple Photos
 - `photos-server`: `sh` code for starting/stopping/restarting the server
-- `photos-http-response-handler`: `sh` code for handling the http requests
+- `photos-http-handler`: `sh` code for handling the http requests
 
 ## `JAX` JavaScript-for-Automation (osascript) approach
 

@@ -6,7 +6,7 @@
         <string>ca.heckman.photos-server</string>
 
         <key>Program</key>
-        <string>/usr/local/libexec/photos-http-response-handler</string>
+        <string>/usr/local/libexec/photos-http-handler</string>
 
         <key>Sockets</key>
         <dict>

@@ -37,26 +37,35 @@ Make a HTTP request to `http://photos/\<query>[?open]`...
 ### Server
 
 The server is operated by a launch agent,
-which forwards HTTP requests to a response handler.
+which forwards HTTP requests to the HTTP handler `photos-http-handler`.
+
+### Command-line utility
+
+The utility `photos-cli` provides several functions
+to interact with Apple Photos,
+one of which is used by the HTTP handler.
+
+It may be spun-off into its own project/repository at some future time.
 
 ### Installation
 
 #### Dependencies
 
-The HTTP-response handler requires the utility `trurl`;
+The HTTP handler requires the utility `trurl`;
 it is available through homebrew as the `trurl` formula.
+It is used to parse and decode the incoming URL.
 
 The automated installation requires the `greadlink` command;
 it is available as part of the `coreutils` homebrew formula.
 
 #### Source files
 
-There are three files to install:
+There are four files to install:
 
 - `photos-cli`,
   which contains functions that automates the Apple Photos Application.
-  This is used by the response handler to export photos.
-- `photos-http-response-handler`,
+  This is used by the HTTP handler to export photos.
+- `photos-http-handler`,
   which generates responses to HTTP requests sent to the server.
 - `ca.heckman.photos-server.plist`,
   which initiates the HTTP server on a local port.
@@ -64,7 +73,7 @@ There are three files to install:
   to `https://photos` to the local server.
 
 Additionally, the hosts file `/etc/hosts`
-needs to be edited to contain the line:
+needs to be edited to include the line:
 
 ```plain-text
 127.0.63.30     photos
@@ -72,12 +81,13 @@ needs to be edited to contain the line:
 
 The `.plist` files should be put in `~/Library/LaunchAgents`.
 
-The source files expect the others to be in the following locations:
+The source files expect things to be in the following locations:
 
 - The launch agent `ca.heckman.photos-server.plist` expects
-  `photos-http-response-handler` to be in `/usr/local/libexec`.
-- The the response handler `photos-http-response-handler` expects
-  the ececutable `photos-cli` to be in `/usr/local/bin`
+  `photos-http-handler` to be in `/usr/local/libexec`.
+- The the HTTP handler `photos-http-handler` expects
+  the command-line utility `photos-cli` to be in `/usr/local/bin`
+  and `trurl` to be found in `/opt/homebrew/bin`.
 
 These expectations can be edited in the source files.
 
@@ -94,14 +104,6 @@ The automated installation does not install
 (nor check for the presense of)
 the required utilities `trurl` and `greadlink`.
 
-## Command-line utility
-
-The utility `photos-cli` provides several functions
-to interact with Apple Photos,
-one of which is used by the server-response handler.
-
-It may be spun-off into its own project/repository at some future time.
-
 ## License
 
 This project is shared under the GNU v3.0 General Public License,
@@ -114,4 +116,4 @@ except for the two SVG icons whose copyrights are not held by me:
 
 - The 'sad mac' icon was created for Apple Inc.
   by Susan Kare (<https://kareprints.com>).
-  I hand-crafted the SVG code.
+  I hand-crafted the SVG which is embedded in the source code for the response handler.
