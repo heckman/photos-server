@@ -7,14 +7,15 @@ Serves photos from the [Apple
 Photos](https://apps.apple.com/app/photos/id1584215428) application
 locally on your Mac.
 
-For instance, on my laptop,
-`http://photos/raven` will return a random photo of a raven, and
-`http://photos/C725495D-7037-4E86-94B6-98EDFAE40AF4`
+For instance, on my Mac,
+<http://photos/C725495D-7037-4E86-94B6-98EDFAE40AF4>
 will return the full-resolution version of this photo:
 
 <p align="center">
-<img src="images/P1080279-600x1200.jpeg" alt="a raven" width="300">
+<img src="images/P1080279-600x1200.jpeg" alt="a raven" width="150">
 </p>
+
+And <http://photos/raven?open> will return a random photo of a raven and then open it in Apple photos.
 
 ## Usage
 
