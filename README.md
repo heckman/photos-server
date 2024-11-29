@@ -20,7 +20,7 @@ will return the full-resolution version of this photo:
 
 ### Client
 
-Make a HTTP request to `http://photos/\<query>[/open]`...
+Make a HTTP request to `http://photos/\<query>[?open]`...
 
 - If `<query>` is a valid photo ID in Apple Photos, that photo will be
   returned. If it is not but looks like a UUID you'll get a _404_ error.
@@ -30,7 +30,7 @@ Make a HTTP request to `http://photos/\<query>[/open]`...
 - If the search produces no valid results, you'll get a _404_.
 - If the search takes too long you'll get a _500_ error. (Try narrowing
   your search terms.)
-- if `/open` is appended to the URL, the photo also will be opened in
+- if `?open` is appended to the URL, the photo also will be opened in
   the Photos app.
 
 ### Server
