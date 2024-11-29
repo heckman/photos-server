@@ -1,14 +1,18 @@
-# Versions
+# Archive Branches
 
-In the development of this project several implementations have been attempted. These various versions are in the branches listed below. This might not be the best way to structure a repository but here we are.
+In the development of this project several implementations were attempted.
+These various versions are in the archived branches listed below.
+This might not be the best way to structure a repository but here we are.
+
+The descriptions below are quite old, circa February 2024.
 
 ## `main`
 
-I've adopted `sh/tcpserver/micro` as the main branch. The versions describe below should all be considered stale.
+I've further developped `archive/sh/tcpserver/micro` as the main branch.
 
 ## Shell approach
 
-### `sh/netcat`
+### `archive/sh/netcat`
 
 Abandonned on 2024-02-14 in favour of using `tcpserver` rather than
 `netcat`. (Last commit `cbf4092`.)
@@ -18,7 +22,7 @@ It uses embedded Javascript-for-Automation (JXA) scripts to instruct
 Apple Photos to export the requested photo to a temporary directory from
 which is then served.
 
-### `sh/tcpserver/mono`
+### `archive/sh/tcpserver/mono`
 
 Abandonned on 2024-02-19 in favour of splitting the `JXA` scripts into
 their own files. (Last commit `212f229`.)
@@ -26,19 +30,19 @@ their own files. (Last commit `212f229`.)
 Offshoot of the `netcat` branch, uses `tcpserver` instead of `netcat`.
 JXA scripts are still embedded in the shell script.
 
-### `sh/tcpserver/micro` (active)
+### `archive/sh/tcpserver/micro`
 
-Current version of shell server implementation.
+This approach was adopted and merged into the main branch.
 
 Is comprised of three files:
 
 - `photos`: `JXA` code for interacting with Apple Photos
 - `photos-server`: `sh` code for starting/stopping/restarting the server
-- `photos-http-handler`: `sh` code for handling the http requests
+- `photos-http-response-handler`: `sh` code for handling the http requests
 
 ## `JAX` JavaScript-for-Automation (osascript) approach
 
-### `JXA/lib`
+### `archive/JXA/lib`
 
 Abandonned 2024-02-22 in favour of putting all the `JXA` code in a
 single file. (Last commit `1ba15e7`.)
@@ -52,9 +56,9 @@ distribute.
 
 This is definitely not the way to go, but has improved my JXA skills!
 
-### `JXA/mono` (active)
+### `archive/JXA/mono` (active)
 
-The current version of `JXA` server implementation.
+The latest version of `JXA` server implementation.
 
 This also contains the best version of `JXA` code for accessing the
 Photos.app, most of which has since been copied to the `main` branch.
@@ -72,7 +76,7 @@ The script is structured in such a way that it is easy to add additional
 functions. It could eventually provide a command-line interface to all
 scriptable endpoints of the Photos application.
 
-## `bun` approach
+## `archive/bun` approach
 
 Using the `bun` runtime to write as much as possible in javascript.
 
@@ -83,7 +87,7 @@ files. This might be resolved by using the the
 The JXA components are still called as external commands, so the fact
 that both parts are written in javascript offers no advantage.
 
-### `bun/sync`
+### `archive/bun/sync`
 
 Abandonned on 2024-02-13 in favour of asynchronous approach.
 
@@ -97,7 +101,7 @@ functions.
 The server hitting occasional segmentation faults, possibly caused by
 the self-terminating `get-photo-id` subprocesses.
 
-### `bun/await`
+### `archive/bun/await`
 
 Abandonned on 2024-02-15 in favour of `.then`/`.catch` style.
 
@@ -109,9 +113,9 @@ which uses the `.then` construct.
 
 Can't remove temporary files after returning http response
 
-### `js/bun/then.catch` (active)
+### `archive/js/bun/then.catch` (active)
 
-Current version of javscript server implementation.
+Latest version of javscript server implementation.
 
 Removed all await operators, and instead use the .then/.catch construct
 throughout. I prefer reading the code written in this manner; it feels
@@ -136,15 +140,15 @@ warning:
 
 > Caution: This is an alpha release. There will be bugs and rough edges.
 
-### `nodeautomation/bun`
+### `archive/nodeautomation/bun`
 
 After making changes to the server code incorporating the `nodeautomation` library,I discovered that it uses a library (`napi`) which does not currently play nicely with `bun`.
 
-### `nodeautomation/express`
+### `archive/nodeautomation/express`
 
 So I replaced `bun` with `node`, and used the `express` http server library. Before introducting the `nodeautomation` code, when testing the server, it seemed quite slow. Taking a closer look, it was taking about 3.5 seconds to respond to a request, while
 bot the `bun` and `sh` servers typically respond on the order of 1 to 1.25 seconds.
 
-### `nodeautomation/fastify`
+### `archive/nodeautomation/fastify`
 
 Thinking it might be because the `express` library is overkill, I attempted to replace it with the `fastify` library. It was a mess, I had problems with typescript, and I gavae up.
