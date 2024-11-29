@@ -211,5 +211,5 @@ function is_uuid(text) {
 }
 
 function log(...args) {
-  console.log(args.map((arg) => JSON.stringify(arg)).join(", "));
+  // console.log(args.map((arg) => JSON.stringify(arg)).join(", "));
 }
