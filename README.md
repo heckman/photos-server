@@ -1,21 +1,26 @@
 # Photos Server
 
+> [!WARNING] THIS IS PROJECT IS IN A STATE OF WILD FLUX
+> Expect breaking changes throughout.
+
 Serves photos from the [Apple
 Photos](https://apps.apple.com/app/photos/id1584215428) application
 locally on your Mac.
 
-For instance, `http://photos/raven` will return a random photo of a raven,
-and `http://photos/C725495D-7037-4E86-94B6-98EDFAE40AF4` will return
-this photo
+For instance, on my laptop,
+`http://photos/raven` will return a random photo of a raven, and
+`http://photos/C725495D-7037-4E86-94B6-98EDFAE40AF4`
+will return the full-resolution version of this photo:
 
-> [!WARNING] THIS IS PROJECT IS IN A STATE OF WILD FLUX
-> Expect breaking changes throughout.
+<p align="center">
+<img src="images/P1080279-600x1200.jpeg" alt="a raven" width="300">
+</p>
 
 ## Usage
 
 ### Client
 
-Make a HTTP request to `http://photos/<query>[/open]...
+Make a HTTP request to `http://photos/\<query>[/open]`...
 
 - If `<query>` is a valid photo ID in Apple Photos, that photo will be
   returned. If it is not but looks like a UUID you'll get a _404_ error.
