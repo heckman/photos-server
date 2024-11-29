@@ -4,21 +4,24 @@ Serves photos from the [Apple
 Photos](https://apps.apple.com/app/photos/id1584215428) application
 locally on your Mac.
 
-**THIS IS PROJECT IS IN A STATE OF WILD FLUX**
+For instance, `http://photos/raven` will return a random photo of a raven,
+and `http://photos/C725495D-7037-4E86-94B6-98EDFAE40AF4` will return
+this photo
 
-Expect breaking changes throughout.
+> [!WARNING] THIS IS PROJECT IS IN A STATE OF WILD FLUX
+> Expect breaking changes throughout.
 
 ## Usage
 
 ### Client
 
-Make a HTTP request to `http://localhost:6330/<query>[/open]...
+Make a HTTP request to `http://photos/<query>[/open]...
 
 - If `<query>` is a valid photo ID in Apple Photos, that photo will be
   returned. If it is not but looks like a UUID you'll get a _404_ error.
-- Otherwise, Apple Photos will perform a search fo `<query>`, and of the
+- Otherwise, Apple Photos will perform a search for `<query>`, and of the
   results, a random photo will be returned. Results will be limited to
-  JPEG and HEIC files (no movies).
+  JPEG and HEIC files (no movies or other image formats).
 - If the search produces no valid results, you'll get a _404_.
 - If the search takes too long you'll get a _500_ error. (Try narrowing
   your search terms.)
@@ -27,86 +30,82 @@ Make a HTTP request to `http://localhost:6330/<query>[/open]...
 
 ### Server
 
-Control the server with `photos-server` with the following commands:
-
-```
-  photos-server start [<timeout>]
-  photos-server restart [<timeout>]
-  photos-server stop
-  photos-server status
-```
-
-Searches performed by Apple Photos can be limited to `<timeout`>
-seconds. At the moment (but liable to change without being updated here)
-the default is 1 second. Setting this to 0 seconds disables the timeout.
+The server is operated by a launch agent,
+which forwards HTTP requests to a response handler.
 
 ### Installation
 
 #### Dependencies
 
-The utilities `tcp-server` and `trurl` are required. Both are avaiable
-via homebrew from the `ucspi-tcp` and `trurl` formulae respecrively. The
-`greadlink` and `realpath` commands are also required; they are
-available in the `coreutils` homebrew formula.
+The HTTP-response handler requires the utility `trurl`;
+it is available through homebrew as the `trurl` formula.
+
+The automated installation requires the `greadlink` command;
+it is available as part of the `coreutils` homebrew formula.
 
 #### Source files
 
 There are three files to install:
 
-- `photos-cli`, which contains functions that access the Photos
-  Application.
-- `photos-server`, which manages the operations of the server.
-- `photos-http-response-handler`, which generates responses to HTTP
-  requests sent to the server.
+- `photos-cli`,
+  which contains functions that automates the Apple Photos Application.
+  This is used by the response handler to export photos.
+- `photos-http-response-handler`,
+  which generates responses to HTTP requests sent to the server.
+- `ca.heckman.photos-server.plist`,
+  which initiates the HTTP server on a local port.
+- `ca.heckman.photos-server-init.plist`, which redirects requests made
+  to `https://photos` to the local server.
 
-They can be put anywhere as long as they can find each-other.
-`photos-server` expects `photos-http-response-handler` to be in
-`../libexec`, and `photos-http-response-handler` expects `photos-cli` to
-be on the PATH. Edit these expectations in the code as required.
+Additionally, the hosts file `/etc/hosts`
+needs to be edited to contain the line:
 
-#### Automation
+```plain-text
+127.0.63.30     photos
+```
 
-There is an script called `install.sh` which will copy these files where
-I like to put them. Don't run it unless you've grokked its source code
-and edited to suit your environment.
+The `.plist` files should be put in `~/Library/LaunchAgents`.
 
-## Command-line tools
+The source files expect the others to be in the following locations:
 
-Several command-line functions to interact with Apple Photos were
-created in the implementation of this server. They may be extracted to
-their own repository in the future. Currently they are included in the
-file `photos-cli`.
+- The launch agent `ca.heckman.photos-server.plist` expects
+  `photos-http-response-handler` to be in `/usr/local/libexec`.
+- The the response handler `photos-http-response-handler` expects
+  the ececutable `photos-cli` to be in `/usr/local/bin`
 
-## Implementation
+These expectations can be edited in the source files.
 
-There are several different implementations, each with their own branch.
-See [branches.md](./VERSIONS) for more details.
+#### Automated installation
 
-Three are in (somewhat) active development:
+There is an script called `install.sh` which will copy
+the source files to the locations noted above.
+Don't run it unless you've grokked the script's source code
+and edited it to suit your environment.
 
-- one written in JavaScript using the `bun` runtime.
-- one written in `sh` using `tcpserver`
-- one written in `JXA`, also using `tcpserver`.
+The script will not modify `/etc/hosts`; that has to be done manually.
 
-The first two implementations make use of external scripts written in
-`JXA` to communicate with Apple Photos. The third incorporates these
-functions into a single script that also encapsulates the server powered
-by `tcpserver`.
+The automated installation does not install
+(nor check for the presense of)
+the required utilities `trurl` and `greadlink`.
 
-The `sh/tcpserver` branch has been adopted as `main` for publication.
-The other two versions have become stale.
+## Command-line utility
+
+The utility `photos-cli` provides several functions
+to interact with Apple Photos,
+one of which is used by the server-response handler.
+
+It may be spun-off into its own project/repository at some future time.
 
 ## License
 
-This project is shared under the GNU v3.0 General Public License, except
-for the two SVGs embedded in the `photos-server`, whose copyrights are not held
-by me:
+This project is shared under the GNU v3.0 General Public License,
+except for the two SVG icons whose copyrights are not held by me:
 
-- The 'broken image' icon was created for Netscape Navigatorby Marsh
-  Chamberlin (<https://dataglyph.com>). The SVG code,
-  [found here](https://gist.github.com/diachedelic/cbb7fdd2271afa52435b7d4185e6a4ad),
-  was hand-coded by github user
-  [diachedelic](https://gist.github.com/diachedelic).
+- The 'broken image' icon was created for Netscape Navigator
+  by Marsh Chamberlin (<https://dataglyph.com>).
+  The icon's [SVG code](https://gist.github.com/diachedelic/cbb7fdd2271afa52435b7d4185e6a4ad)
+  was hand-coded by github user [diachedelic](https://gist.github.com/diachedelic).
 
-- The 'sad mac' icon was created for Apple Inc. by Susan Kare (<https://kareprints.com>).
+- The 'sad mac' icon was created for Apple Inc.
+  by Susan Kare (<https://kareprints.com>).
   I hand-crafted the SVG code.
