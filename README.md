@@ -1,7 +1,7 @@
 # Photos Server
 
-> [!WARNING] THIS IS PROJECT IS IN A STATE OF WILD FLUX
-> Expect breaking changes throughout.
+> [!WARNING]
+> **THIS IS PROJECT IS IN A STATE OF WILD FLUX**<br>Expect breaking changes throughout.
 
 Serves photos from the [Apple
 Photos](https://apps.apple.com/app/photos/id1584215428) application
@@ -47,9 +47,9 @@ one of which is used by the HTTP handler.
 
 It may be spun-off into its own project/repository at some future time.
 
-### Installation
+## Installation
 
-#### Dependencies
+### Dependencies
 
 The HTTP handler requires the utility `trurl`;
 it is available through homebrew as the `trurl` formula.
@@ -58,7 +58,7 @@ It is used to parse and decode the incoming URL.
 The automated installation requires the `greadlink` command;
 it is available as part of the `coreutils` homebrew formula.
 
-#### Source files
+### Source files
 
 There are four files to install:
 
@@ -91,7 +91,7 @@ The source files expect things to be in the following locations:
 
 These expectations can be edited in the source files.
 
-#### Automated installation
+### Automated installation
 
 There is an script called `install.sh` which will copy
 the source files to the locations noted above.
