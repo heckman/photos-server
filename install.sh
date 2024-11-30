@@ -22,8 +22,9 @@ install(){
 	install_file src/ca.heckman.photos-server-init.plist "$LIBRARY/LaunchAgents"
 	install_file src/photos-cli "$PREFIX/bin" true
 	install_file src/photos-http-handler "$PREFIX/libexec" true
-	echo "edit the file '/etc/hosts' to include the line:
-127.0.63.30     photos"
+	echo "optionally edit the file '/etc/hosts' to one or more of lines like these:
+127.0.63.30     photos
+127.0.63.30     photos.local"
 }
 
 uninstall(){
@@ -35,8 +36,7 @@ uninstall(){
 	uninstall_file "$LIBRARY//ca.heckman.photos-server-init.plist"
 	uninstall_file "$PREFIX/bin/photos-cli" true
 	uninstall_file "$PREFIX/libexec/photos-http-handler" true
-	echo "edit the file '/etc/hosts' to remove the line:
-127.0.63.30     photos"
+	echo "edit the file '/etc/hosts' to remove the lines defining names for 127.0.63.30"
 }
 
 # Change to the directory containing this script
