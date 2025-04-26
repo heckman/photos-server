@@ -23,14 +23,13 @@ And <http://photos.local/raven?open> will serve a random photo of a raven and th
 
 ### Client
 
-Make a HTTP request to `http://photos.local/<query>[?open]`...
+Make a HTTP request to `http://127.0.63.30/<query>[?open]`...
 
-- Using `photos.local` as a host name requires editing the system's host file.
-  Other names can be used. (See [Naming the server](#Naming the server) for details.)
-  In any case, the server can be reached at `127.0.63.30`.
+- `127.0.63.30` can be replaced with a pretty name like `photos.local`,
+  if it is defined in the hosts file. (See [Naming the server](#Naming the server) for details.)
 - If `<query>` is a valid photo ID in Apple Photos, that photo will be
   returned. If it is not but looks like a UUID you'll get a _404_ error.
-- Otherwise, Apple Photos will perform a search for `<query>` and, of the
+- Otherwise, Apple Photos will perform a search for `<query>`, and of the
   results, a random photo will be returned. Results will be limited to
   HEIC, HEIF, JPG, JPEG, TIFF, GIF and PNG files. (No RAW images or videos.)
 - If the search produces no valid results, you'll get a _404_.
@@ -48,9 +47,9 @@ which forwards HTTP requests to the HTTP handler `photos-http-handler`.
 
 The utility `photos-cli` provides several functions
 to interact with Apple Photos,
-one of which is used by the HTTP handler to export photos.
+one of which is used by the HTTP handler.
 
-This utility may be spun-off into its own project/repository at some future time.
+It may be spun-off into its own project/repository at some future time.
 
 ## Installation
 
@@ -83,14 +82,13 @@ The `.plist` files should be put in `~/Library/LaunchAgents`.
 
 The source files expect things to be in the following locations:
 
-- `photos-http-handler` is expected to be in `/usr/local/libexec`.
-- `photos-cli` is expected to be in `/usr/local/bin`.
-- `trurl` is expected in `/opt/homebrew/bin`.
-	(This will need to be changed for Intel Macs.
+- The launch agent `ca.heckman.photos-server.plist` expects
+  `photos-http-handler` to be in `/usr/local/libexec`.
+- The the HTTP handler `photos-http-handler` expects
+  the command-line utility `photos-cli` to be in `/usr/local/bin`
+  and `trurl` to be found in `/opt/homebrew/bin`.
 
 These expectations can be edited in the source files.
-
-(A future version my rely on the system's *PATH* to find these commands where it can.)
 
 ### Naming the server
 
@@ -126,17 +124,17 @@ to a machine on your local network called "photos" with `photos.local`.
 >
 > **Server IP address**
 >
-> The value of `127.0.63.30`, which is for the most part arbitrary,
-> can be changed by editing both of the `.plist` files.
+> The value of `127.0.63.30` can be changed
+> by editing both of the `.plist` files.
 > All values starting with `127.` are reserved for _localhost_ addresses.
-> I'd avoind `127.0.0.1` as it might be used by a local web server.
+> I'd avoind `127.0.0.1` as it might be used by a local webserver.
 
 ### Automated installation
 
-Included is an script called `install.sh`
-which will copy the source files to the locations noted above.
-Don't run it unless you fully understand the script's source code
-and have edited it to suit your environment.
+There is an script called `install.sh` which will copy
+the source files to the locations noted above.
+Don't run it unless you've grokked the script's source code
+and edited it to suit your environment.
 
 The script will not modify `/etc/hosts`; that has to be done manually.
 
@@ -145,8 +143,6 @@ The automated installation does not install
 the required utilities `trurl` and `greadlink`.
 
 ## License
-
-Please let me know if you find this project useful. Feel 
 
 This project is shared under the GNU v3.0 General Public License,
 except for the two SVG icons whose copyrights are not held by me:
