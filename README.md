@@ -16,17 +16,20 @@ will receive the full-resolution version of this photo:
 <p align="center">
 <img src="images/P1080279-600x1200.jpeg" alt="a raven" width="150">
 </p>
-
 And <http://photos.local/raven?open> will serve a random photo of a raven and then open it in Apple photos.
+
+It is not terribly fast, but it will load photos when I'm editing a markdown document.
+
+The searching feature is particularly slow—slower than it used to be.
 
 ## Usage
 
 ### Client
 
-Make a HTTP request to `http://127.0.63.30/<query>[?open]`...
+Make a HTTP request to `http://localhost:6330/<query>[?open]`...
 
-- `127.0.63.30` can be replaced with a pretty name like `photos.local`,
-  if it is defined in the hosts file. (See [Naming the server](#Naming the server) for details.)
+- `localhost:6330` can be replaced with a pretty name like `photos.local`,
+  if it is defined in the hosts file, and port forwarding is set up (See [Naming the server](#Naming the server) for details.)
 - If `<query>` is a valid photo ID in Apple Photos, that photo will be
   returned. If it is not but looks like a UUID you'll get a _404_ error.
 - Otherwise, Apple Photos will perform a search for `<query>`, and of the
@@ -53,6 +56,10 @@ It may be spun-off into its own project/repository at some future time.
 
 ## Installation
 
+> **Warning**: I haven't Installed this since I changed the system files in `/etc/`.
+>
+> Please let me know if you have trouble with it and if you overcame it so I can update the instructions.
+
 ### Dependencies
 
 The HTTP handler requires the utility `trurl`;
@@ -73,8 +80,6 @@ There are four files to install:
   which generates responses to HTTP requests sent to the server.
 - `ca.heckman.photos-server.plist`,
   which initiates the HTTP server on a local port.
-- `ca.heckman.photos-server-init.plist`, which redirects requests made
-  to `https://photos` to the local server.
 
 #### File locations
 
@@ -93,46 +98,60 @@ These expectations can be edited in the source files.
 ### Naming the server
 
 If you'd like to refer to the server by name,
-rather that as `127.0.63.30`,
-then edit the hosts file `/etc/hosts`
-to give the server a name.
-(Editing this file requires root privileges.)
+rather that as `localhost:6330`,
+it can be accomplished by editing some system files.
 
-You'll need to include a line like this one:
+> **WARNING**: This is not for the faint of heart. Doing this wrong could be VERY VERY VERY bad. Don't do this unless you know what you're doing. If it goes horrible bad it is absolutely not my fault.
 
-```plain-text
-127.0.63.30     photos
+#### Forward port 6330
+
+Add this line to a new file at `/etc/pf.anchors/com.local.redirect` to make a new rule:
+
+```conf
+rdr pass on lo0 inet proto tcp from any to 127.0.0.3 port 80 -> 127.0.0.3 port 6330
 ```
 
-Initially, I liked the name `photos`, but ran into a problem.
-Some clients (like the one I was using: Typora)
-will not allow for connections to `HTTP` servers
-by names other than for a select few,
-notably `localhost` and `*.local`,
-So now I'm using `photos.local`:
+Now enable the rule in `/etc/pf.conf`, add the lines with `com.local.redirect` after the existing rules of their respective types, that is to satm the new `rdr-anchor` line after the existing `rdr-anchor` lines, and the new `load anchor` line after the existing `load anchor` lines.
 
-```plain-text
-127.0.63.30     photos.local
+```shell
+scrub-anchor "com.apple/*"
+nat-anchor "com.apple/*"
+rdr-anchor "com.apple/*"
+rdr-anchor "com.local.redirect"
+dummynet-anchor "com.apple/*"
+anchor "com.apple/*"
+load anchor "com.apple" from "/etc/pf.anchors/com.apple"
+load anchor "com.local.redirect" from "/etc/pf.anchors/com.local.redirect"
 ```
 
-Note that binding `photos.local` name will make it impossible to connect
-to a machine on your local network called "photos" with `photos.local`.
+Now flush the rules with `sudo pfctl -f /etc/pf.conf` which will produce a warning that flushing the rules can mess up your system's existing rules, which is fine.
 
-(Currently I'm using both `photos.local` and `photos` in my hosts file.)
+That takes care of forwarding the port.
+Now a request to `127.0.0.3:6330` will be redirected to `127.0.0.3:80`.
 
-> [!NOTE]
->
-> **Server IP address**
->
-> The value of `127.0.63.30` can be changed
-> by editing both of the `.plist` files.
-> All values starting with `127.` are reserved for _localhost_ addresses.
-> I'd avoind `127.0.0.1` as it might be used by a local webserver.
+Now to add the pretty name. Add lines to `/etc/hosts`
+to assign names to `127.0.0.3`.
+I used added these:
+
+```plain-text
+127.0.0.3       photos
+127.0.0.3       photos.local
+127.0.0.3       photos.app
+```
+
+The only one that worked was `photos.local` so I removed the other two—it's the only one my system would let me access via http rather than https. Also, safari kept adding `.com` to the the plain `photos`.
+
+
 
 ### Automated installation
 
+> **Warning**: it's probably not a good idea to use this. It is not my fault if you do and things go poorly.
+
+> **Warning**: I haven't used this script since I last edited it, so anything could happen. Really, don't use it!
+
 There is an script called `install.sh` which will copy
 the source files to the locations noted above.
+
 Don't run it unless you've grokked the script's source code
 and edited it to suit your environment.
 

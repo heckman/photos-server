@@ -8,6 +8,7 @@ update-agent:
   chmod 644 "{{agentdir}}/ca.heckman.photos-server.plist"
   launchctl load "{{agentdir}}/ca.heckman.photos-server.plist"
   launchctl start ca.heckman.photos-server
+  sleep 0.2
   launchctl list | grep ca.heckman.photos-server
 
 start-agent:

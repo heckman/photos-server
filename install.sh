@@ -7,6 +7,7 @@
 
 
 export PREFIX="/usr/local"
+export PREFIX_REQUIRES_ROOT=true
 export LIBRARY="$HOME/Library"
 
 main(){
@@ -19,12 +20,9 @@ main(){
 install(){
 	if test "${1}" == '--force'; then cp_opt=""; else cp_opt="-n"; fi
 	install_file src/ca.heckman.photos-server.plist "$LIBRARY/LaunchAgents"
-	install_file src/ca.heckman.photos-server-init.plist "$LIBRARY/LaunchAgents"
-	install_file src/photos-cli "$PREFIX/bin" true
-	install_file src/photos-http-handler "$PREFIX/libexec" true
-	echo "optionally edit the file '/etc/hosts' to one or more of lines like these:
-127.0.63.30     photos
-127.0.63.30     photos.local"
+	install_file src/photos-cli "$PREFIX/bin" $PREFIX_REQUIRES_ROOT
+	install_file src/photos-http-handler "$PREFIX/libexec" $PREFIX_REQUIRES_ROOT
+	echo "Optionally edit manually various files in /etc/ for a pretty host name"
 }
 
 uninstall(){
@@ -33,10 +31,9 @@ uninstall(){
 	else rm_opt="-i"
 	fi
 	uninstall_file "$LIBRARY/LaunchAgents/ca.heckman.photos-server.plist"
-	uninstall_file "$LIBRARY//ca.heckman.photos-server-init.plist"
-	uninstall_file "$PREFIX/bin/photos-cli" true
-	uninstall_file "$PREFIX/libexec/photos-http-handler" true
-	echo "edit the file '/etc/hosts' to remove the lines defining names for 127.0.63.30"
+	uninstall_file "$PREFIX/bin/photos-cli" $PREFIX_REQUIRES_ROOT
+	uninstall_file "$PREFIX/libexec/photos-http-handler" $PREFIX_REQUIRES_ROOT
+	echo "This does not remove any changes made manuall to files in /etc/"
 }
 
 # Change to the directory containing this script
@@ -48,8 +45,8 @@ install_file(){
 	destination_directory="$2"
 	as_root="${3:-false}"
 	$as_root && sudo_cmd="sudo" || sudo_cmd=""
-	mkdir -p "$destination_directory"
-	if $sudo_cmd cp $cp_opt "$source" "$destination_directory"
+	mkdir -p -- "$destination_directory"
+	if $sudo_cmd cp $cp_opt -- "$source" "$destination_directory"
 	then
 		echo "install.sh: installed file: $destination_directory/$(basename "$source")"
 		return 0
@@ -66,7 +63,7 @@ uninstall_file(){
 	if test -f "$target"
 	then
 		echo "install.sh: removing file: $target"
-		$sudo_cmd rm $rm_opt "$target"
+		$sudo_cmd rm $rm_opt -- "$target"
 	else
 		echo "install.sh: file not installed: $target"
 	fi

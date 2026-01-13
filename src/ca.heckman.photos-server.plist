@@ -13,9 +13,9 @@
             <key>Photos</key>
             <dict>
                 <key>SockNodeName</key>
-                <string>127.0.63.30</string>
+                <string>localhost</string>
                 <key>SockServiceName</key>
-                <string>80</string>
+                <string>6330</string>
                 <key>SockPassive</key>
                 <true/>
             </dict>
@@ -27,7 +27,10 @@
         </dict>
 
         <key>StandardErrorPath</key>
-        <string>/dev/null</string>
+        <string>/Users/erik/dev/project.photos-server/photos-server/log/launchagent-error.log</string>
+
+        <key>RunAtLoad</key>
+        <true/>
 
     </dict>
 </plist>
