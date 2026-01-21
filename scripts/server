@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+
+usage="Usage: $0 stop|start|restart|install|uninstall|reset"
+
+cd "$(git rev-parse --show-toplevel)" || exit 1
+
+do_tasks(){
+	case "$1" in
+	stop)
+		stop_server ;;
+	start)
+		stop_server && start_server ;;
+	restart)
+		stop_server && start_server ;;
+	install)
+		install_daemon && install_handler ;;
+	uninstall)
+		stop_server && uninstall_daemon && uninstall_handler ;;
+	reset)
+		stop_server && install_daemon && install_handler && start_server ;;
+	*)
+		echo "$usage">&2
+		exit 1 ;;
+	esac
+}
+
+stop_server(){
+	launchctl unload -w "$HOME/Library/LaunchAgents/ca.heckman.photos-server.listener.plist"
+}
+start_server(){
+	launchctl load -w "$HOME/Library/LaunchAgents/ca.heckman.photos-server.listener.plist"
+}
+install_daemon(){
+	cp -i src/ca.heckman.photos-server.listener.plist "$HOME/Library/LaunchAgents"
+}
+uninstall_daemon(){
+	rm -i "$HOME/Library/LaunchAgents/ca.heckman.photos-server.listener.plist"
+}
+install_handler(){
+	sudo cp -i src/photos-http-handler "/usr/local/libexec"
+}
+uninstall_handler(){
+	sudo rm -i /usr/local/libexec/photos-http-handler
+}
+
+if [[ -z "$1" ]]
+then
+	echo "$usage" >&2
+	exit 1
+elif [[ "$1" == "-h" || "$1" == "--help" ]]
+then
+	echo "$usage"
+	exit 0
+fi
+
+do_tasks "$@"
