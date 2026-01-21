@@ -1,5 +1,25 @@
 #!/usr/bin/env bash
 
+# set -x
+
+# these server settings can be changed to suit:
+interface=localhost
+port=6330
+
+#  these can also be changed to a custom directory:
+photos_server_home="${XDG_DATA_HOME:-$HOME/.local/share}/photos-server"
+
+# set log_location to wherever, or /dev/null to disable.
+# log_location="/dev/null"
+log_location="$photos_server_home/photos-server.log"
+
+# don't change these:
+launch_agent_label="ca.heckman.photos-server.listener"
+launch_agent="$HOME/Library/LaunchAgents/$launch_agent_label.plist"
+http_handler="$photos_server_home/bin/http-handler"
+
+
+
 usage="Usage: $0 stop|start|restart|install|uninstall|reset"
 
 cd "$(git rev-parse --show-toplevel)" || exit 1
@@ -9,39 +29,121 @@ do_tasks(){
 	stop)
 		stop_server ;;
 	start)
-		stop_server && start_server ;;
+		start_server ;;
 	restart)
 		stop_server && start_server ;;
 	install)
-		install_daemon && install_handler ;;
+		install_agent && install_handler ;;
 	uninstall)
-		stop_server && uninstall_daemon && uninstall_handler ;;
+		stop_server && uninstall_agent && uninstall_handler ;;
 	reset)
-		stop_server && install_daemon && install_handler && start_server ;;
+		stop_server && install_agent && install_handler && start_server ;;
 	*)
 		echo "$usage">&2
 		exit 1 ;;
 	esac
 }
+is_server_running(){
+	if  launchctl list | grep -q 'ca.heckman.photos-server'
+	then
+		echo "Server is running."
+		return 0
+	else
+		echo "Server is stopped."
+		return 1
+	fi
+}
 
 stop_server(){
-	launchctl unload -w "$HOME/Library/LaunchAgents/ca.heckman.photos-server.listener.plist"
+	if is_server_running
+	then
+		echo "Stopping server..."
+		# launchctl unload -w "$launch_agent" &&
+		launchctl bootout "gui/$(id -u)" "$launch_agent"
+		! is_server_running
+	fi
 }
 start_server(){
-	launchctl load -w "$HOME/Library/LaunchAgents/ca.heckman.photos-server.listener.plist"
+	if ! is_server_running
+	then
+		echo "Starting server..."
+		# launchctl load -w "$launch_agent"
+		launchctl bootstrap "gui/$(id -u)" "$launch_agent"
+		is_server_running
+	fi
 }
-install_daemon(){
-	cp -i src/ca.heckman.photos-server.listener.plist "$HOME/Library/LaunchAgents"
+install_agent(){
+	{
+		remove "$launch_agent"
+		cat > "$launch_agent" <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+    <dict>
+        <key>Label</key>
+        <string>$launch_agent_label</string>
+
+        <key>Program</key>
+        <string>$http_handler</string>
+
+	<key>WorkingDirectory</key>
+	<string>$photos_server_home</string>
+
+        <key>Sockets</key>
+        <dict>
+            <key>Photos</key>
+            <dict>
+                <key>SockNodeName</key>
+                <string>$interface</string>
+                <key>SockServiceName</key>
+                <string>$port</string>
+                <key>SockPassive</key>
+                <true/>
+            </dict>
+        </dict>
+        <key>inetdCompatibility</key>
+        <dict>
+            <key>Wait</key>
+            <false/>
+        </dict>
+
+        <key>StandardErrorPath</key>
+        <string>$log_location</string>
+
+        <key>RunAtLoad</key>
+        <true/>
+
+    </dict>
+</plist>
+EOF
+	} &&
+	echo "Installed $launch_agent_label launch agent..."
+	launchctl enable "gui/$(id -u)/$launch_agent_label" &&
+	echo "Enabled $launch_agent_label launch agent."
 }
-uninstall_daemon(){
-	rm -i "$HOME/Library/LaunchAgents/ca.heckman.photos-server.listener.plist"
+uninstall_agent(){
+	launchctl disable "gui/$(id -u)/$launch_agent_label" &&
+	echo "Disabled $launch_agent_label launch agent."
+	remove "$launch_agent"
 }
 install_handler(){
-	sudo cp -i src/photos-http-handler "/usr/local/libexec"
+	mkdir -p "$(dirname "$http_handler")"
+	cp -i src/photos-http-handler "$http_handler" &&
+	echo "Installed $http_handler."
 }
 uninstall_handler(){
-	sudo rm -i /usr/local/libexec/photos-http-handler
+	remove "$http_handler"
 }
+remove(){
+	if [[ -e "$1" ]]
+	then
+		rm -i -- "$1" && echo "Removed."
+	else
+		: # echo "$1 has already been removed."
+	fi
+	! [[ -e "$1" ]]
+}
+
 
 if [[ -z "$1" ]]
 then
