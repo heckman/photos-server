@@ -1,0 +1,33 @@
+{
+	"script-bundler": { "version": "1.0" },
+	"target": "/dist/Photos Launcher.app",
+	"script": "/src/photos-launcher.jxa",
+	"name": "Photos Launcher",
+	"version": "0.1",
+	"identifier": "ca.heckman.photos-launcher",
+	"copyright": "Copyright 2026 Erik Ben Heckman <erik@heckman.ca>",
+	"inline": [
+		"const predicate = (url) => url.host.js == \"photos.local\";",
+		"const defaultOpenCommand = \"open -a Safari\";"
+	],
+	"plist": {
+		"CFBundleDocumentTypes": [
+			{
+				"CFBundleTypeName": "HTML document",
+				"CFBundleTypeRole": "Viewer",
+				"LSItemContentTypes": ["public.html"]
+			},
+			{
+				"CFBundleTypeName": "XHTML document",
+				"CFBundleTypeRole": "Viewer",
+				"LSItemContentTypes": ["public.xhtml"]
+			}
+		],
+		"CFBundleURLTypes": [
+			{
+				"CFBundleURLName": "Web site URL",
+				"CFBundleURLSchemes": ["http", "https"]
+			}
+		]
+	}
+}

@@ -27,7 +27,7 @@ set -e
 
 # shellcheck disable=SC2034
 silent=0  error=1 warn=3 info=4 debug=5
-vebosity=$info
+vebosity=$debug
 
 
 # dependencies can be installed via homebrew:
@@ -40,8 +40,8 @@ JQ=/opt/homebrew/bin/jq
 # the location of bash also needs to be specified in the shebang
 # bash needs to support associative arrays, which is in bash 4.0
 
-TEMP_TEMPLATE=ca.heckman.photos-server.image
-TIMEOUT_SECONDS=12  # time given to Photos to respond to request
+TEMP_TEMPLATE=ca.heckman.photos-server.exported-media-item
+TIMEOUT_SECONDS=150  # time given to Photos to respond to request
 
 
 main(){
@@ -70,12 +70,13 @@ main(){
 	trap "rm -rf '$tmpdir'" EXIT
 
 	local result
-	result="$(export_media_item_from_photos "$query" "$tmpdir")" ||
+	result="$(export_media_item_from_photos "$query" "$tmpdir")" || {
 		case $? in
 		124) die ERR_TIMEOUT 504;;
 		1) die ERR_JXA ;;
-		*) die ;;
+		*) die $?;;
 		esac
+	}
 
 	debug "Result=$result"
 	[[ -n "$result" ]] || {
@@ -105,12 +106,13 @@ Content-Disposition: inline; filename=$basename.$extension
 
 die(){
 	local -A error_messages=(
+		[ERR_UNDEFINED]="Undefined error"
 		[ERR_TEMP]="Failed to create temporary directory"
 		[ERR_JXA]="Failed to run jxa"
 		[ERR_EXPORT]="Failed to find exported file"
 		[ERR_TIMEOUT]="Request to Photos timed out."
 	)
-	error "${error_messages[$1]:-Unknown error}"
+	error "$1"
 	canned_response "${2:-500}"
 	exit 1
 }
@@ -128,7 +130,7 @@ canned_response(){
 		description="504 Gateway Timeout"
 		filename="timeout.svg";;
 	esac
-	local content="${canned_responses[$2]}"
+	local content="${canned_responses[$filename]}"
 	local length="${#content}"
 	# all canned responses are svg images
 	local content_type="svg+xml"
@@ -244,6 +246,27 @@ and can be found embedded in the code for https://github.com/heckman/photos-serv
     M21,25 h6 v1 h-6 Z"></path>
 </svg>
 '
+["timeout.svg"]='<?xml version="1.0" encoding="UTF-8"?>
+<!--
+The "Watch" cursor was created for Apple Inc. by Susan Kare https://kareprints.com
+The SVG was hand-coded Erik Ben Heckman https://erik.heckman.ca who added the exclaimation
+point and can be found embedded in the code for https://github.com/heckman/photos-server
+-->
+<svg viewBox="-2 -6 30 30" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <rect id="face" x="5" y="5" width="8" height="8" fill="white" />
+  <path id="watch" fill-rule="evenodd" fill="black" d="
+    M 6 1 h 6 v 16 h -6 Z
+    M 4 6 h 10 v 6 h -10 Z
+    M 5 5 h 8 v 8 h -8 Z
+    M 6 6 h 6 v 6 h -6 Z
+    M 14 8 h 1 v 2 h -1 Z
+    M 9 6 h 1 v 4 h -3 v -1 h 2 Z
+  " />
+  </path>
+  <path id="bang" fill-rule=" evenodd" fill="#eb161e" d="
+  M 18 1 v16 h 3 v -4 h -3 v 1 h 3 v -13 Z
+"></path>"
+</svg>'
 )
 
 main "$@"

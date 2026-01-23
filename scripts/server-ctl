@@ -26,6 +26,8 @@ cd "$(git rev-parse --show-toplevel)" || exit 1
 
 do_tasks(){
 	case "$1" in
+	status)
+		is_server_running ;;
 	stop)
 		stop_server ;;
 	start)

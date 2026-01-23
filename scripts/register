@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+
+if [[ -z $1 || $1 == -* ]]
+then
+        echo "
+Force registration an application with LaunchServices.
+
+Usage: $0 <Application>
+" >&2
+        exit 1;
+fi
+
+/System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -f "$1"
+

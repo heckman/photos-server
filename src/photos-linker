@@ -1,0 +1,133 @@
+#!/usr/bin/osascript -l JavaScript
+// Copyright (c) 2024 Erik Ben Heckman, shared under the GPL-3.0 license
+// <https://github.com/heckman/photos-server>
+//
+//
+//  captures links to media items selected in Apple Photos
+//
+//
+//
+const origin = "http://photos.local";
+
+const photos = Application("Photos");
+
+function run(args) {
+	console.log(args);
+}
+
+const remove_uuid_suffix = (s) => (s ? s.replace(/\/.*$/, "") : s);
+
+function properties(item) {
+	try {
+		return item.properties();
+	} catch {
+		return photos.mediaItems
+			.byId(
+				Automation.getDisplayString(item).match(
+					/mediaItems\.byId\("([^"]+)"\)/,
+				)[1],
+			)
+			.properties();
+	}
+}
+function altText(props) {
+	return (
+		props.name?.trim() ||
+		props.description?.trim() ||
+		(props.keywords && props.keywords[0]?.trim()) ||
+		props.filename.replace(/\.[^.]*$/, "")
+	);
+}
+
+const mediaItemFilePrefixes = /^(IMG_|IMAG|MVI_|Dscn|Picture_)/;
+const mediaItemFileExtension = /\.\w+$/;
+
+function trimmed_filename(filename) {
+	return filename
+		.replace(mediaItemFilePrefixes, "")
+		.replace(mediaItemFileExtension, ""); // remove extension
+}
+function daysOff(date, offset) {
+	newDate = new Date(date);
+	newDate.setDate(date.getDate() + offset);
+	return newDate;
+}
+
+function url(props) {
+	filename = trimmed_filename(props.filename);
+	date = props.date;
+	unique = (q) => (app.search({ for: q }).length == 1 ? q : null);
+	query = (d, w) => `${d.toISOString().slice(0, 10)} ${w}`;
+	return (
+		origin +
+		"/" +
+		(
+			unique(query(date, filename)) ||
+			unique(query(daysOff(date, -1), filename)) ||
+			unique(query(daysOff(date, 1), filename)) ||
+			`${remove_uuid_suffix(props.id)}/${query(date, filename)}`
+		).replace(/ /g, ".")
+	);
+}
+
+// void => [{name, url}] (from selection)
+function url_links() {
+	// app.displayAlert("url_links");
+	return photos.selection().map((item) => {
+		const props = properties(item);
+		return {
+			name: mediaItemLabel(props),
+			url: mediaItemUrl(props),
+		};
+	});
+}
+// [{name, url}] => markdown image tags, each on its own line
+function render_links_as_markdown(links = links()) {
+	return (
+		links.map((link) => `![${link.name}](${link.url})`).join("\n") +
+		"\n"
+	);
+}
+
+function copy_markdown_links() {
+	Library("Operations").copy_markdown_links(this.name());
+}
+
+function copy_markdown_links(app_name) {
+	const app = set_app(app_name);
+	const library = library_for(app_name);
+	const links = library.url_links();
+	// app.displayAlert("copy_markdown_links");
+	if (links.length) {
+		app.setTheClipboardTo(library.render_links_as_markdown(links));
+	}
+	const alert = links.length
+		? {
+				title:
+					`${links.length} markdown link${
+						links.length > 1 ? "s" : ""
+					}` + " copied to clipboard!",
+				message: "",
+			}
+		: {
+				title: "No links copied.",
+				message: "Because no items were selected.",
+			};
+	try {
+		app.displayAlert(alert.title, {
+			message: alert.message,
+			as: "informational",
+			// buttons: ["OK"],
+			buttons: ["OK", "Dismiss"],
+			defaultButton: "OK",
+			cancelButton: "Dismiss", // so escape key closes the alert too!
+			givingUpAfter: 5,
+		});
+	} catch (e) {
+		if (e.errorNumber != -128) {
+			throw e;
+		}
+	} finally {
+		return alert.title;
+	}
+}
