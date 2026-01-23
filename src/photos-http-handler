@@ -261,11 +261,10 @@ point and can be found embedded in the code for https://github.com/heckman/photo
     M 6 6 h 6 v 6 h -6 Z
     M 14 8 h 1 v 2 h -1 Z
     M 9 6 h 1 v 4 h -3 v -1 h 2 Z
-  " />
-  </path>
+  "></path>
   <path id="bang" fill-rule=" evenodd" fill="#eb161e" d="
-  M 18 1 v16 h 3 v -4 h -3 v 1 h 3 v -13 Z
-"></path>"
+    M 18 1 v16 h 3 v -4 h -3 v 1 h 3 v -13 Z
+  "></path>"
 </svg>'
 )
 

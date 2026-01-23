@@ -1,0 +1,113 @@
+#!/usr/bin/osascript -l JavaScript
+// Copyright (c) 2024 Erik Ben Heckman, shared under the GPL-3.0 license
+// <https://github.com/heckman/photos-server>
+//
+//
+//  captures links to media items selected in Apple Photos
+//
+//
+//
+const origin = "http://photos.local";
+
+const photos = Application("Photos");
+photos.includeStandardAdditions = true;
+
+function altText(props) {
+	return (
+		props.name?.trim() ||
+		props.description?.trim() ||
+		(props.keywords && props.keywords[0]?.trim()) ||
+		props.filename.replace(/\.[^.]*$/, "")
+	);
+}
+
+const remove_uuid_suffix = (s) => (s ? s.replace(/\/.*$/, "") : s);
+
+const filenamePrefixes = /^(IMG_|IMAG|MVI_|Dscn|Picture_)/;
+const filenameExtensions = /\.\w+$/;
+
+function trimmed_filename(filename) {
+	return filename
+		.replace(filenamePrefixes, "")
+		.replace(filenameExtensions, ""); // remove extension
+}
+
+function daysOff(date, offset) {
+	newDate = new Date(date);
+	newDate.setDate(date.getDate() + offset);
+	return newDate;
+}
+
+function url(props) {
+	filename = trimmed_filename(props.filename);
+	date = props.date;
+	unique = (q) => (photos.search({ for: q }).length == 1 ? q : null);
+	query = (d, w) => `${d.toISOString().slice(0, 10)} ${w}`;
+	return (
+		origin +
+		"/" +
+		(
+			unique(query(date, filename)) ||
+			unique(query(daysOff(date, -1), filename)) ||
+			unique(query(daysOff(date, 1), filename)) ||
+			`${remove_uuid_suffix(props.id)}/${query(date, filename)}`
+		).replace(/ /g, ".")
+	);
+}
+
+function properties(item) {
+	try {
+		return item.properties();
+	} catch {
+		return photos.mediaItems
+			.byId(
+				Automation.getDisplayString(item).match(
+					/mediaItems\.byId\("([^"]+)"\)/,
+				)[1],
+			)
+			.properties();
+	}
+}
+
+function copy_markdown_links(items) {
+	photos.setTheClipboardTo(
+		items
+			.map((item) => {
+				const props = properties(item);
+				return `![${altText(props)}](${url(props)})`;
+			})
+			.join("\n") + "\n",
+	);
+}
+
+function run(args) {
+	const items = photos.selection();
+	const count = items.length;
+
+	if (count) copy_markdown_links(items);
+
+	const [title, message] = count
+		? [
+				`${count} markdown link${count > 1 ? "s" : ""}` +
+					" copied to clipboard!",
+				"",
+			]
+		: ["No links copied.", "Because no items were selected."];
+
+	try {
+		photos.displayAlert(title, {
+			message: message,
+			as: "informational",
+			buttons: ["OK", "Dismiss"],
+			defaultButton: "OK",
+			cancelButton: "Dismiss", // so escape key closes the alert too!
+			givingUpAfter: 5,
+		});
+	} catch (e) {
+		if (e.errorNumber != -128) {
+			throw e;
+		}
+	} finally {
+		return alert.title;
+	}
+}
