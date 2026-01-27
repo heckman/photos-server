@@ -1,18 +1,23 @@
 // Preconditions:
 //
-// - A function `predicate` that takes an ObjC URL object
-//   and returns true if we should open the URL with Photos.
-// - A string `defaultOpenCommand` that will be used as a shell
-//   command to open the url if we're not opening it with Photos.
+// settings must be an object with the following properties:
+// - authority: The host and port that urls will be matched against to
+//   determine if they should be opened in the Photos app. This must
+//   include the port, even if it is 80.
+// - defaultBBrowser: The name of the application that should open urls
+//   that do not match the defined authority.
 //
 // Example:
-
-// const predicate = (url) => url.host.js == "photos.local";
-// const defaultOpenCommand = "open -a Safari";
+settings = { authority: "photos.local", defaultBrowser: "Safari" };
 
 function GURLGURL(url) {
 	const urlObj = $.NSURL.URLWithString(url);
-	if (predicate(urlObj)) {
+	const host = urlObj.host.js;
+	const port = urlObj.port.js;
+	if (
+		(port && port !== 80 ? `${host}:${port}` : host) ===
+		settings.authority.replace(/:80$/, "")
+	) {
 		const photos = Application("Photos");
 		const query = decodeURIComponent(
 			urlObj.lastPathComponent.js,
@@ -30,7 +35,8 @@ function GURLGURL(url) {
 	} else {
 		const app = Application.currentApplication();
 		app.includeStandardAdditions = true;
-
-		app.doShellScript(`${defaultOpenCommand} ${url}`);
+		app.doShellScript(
+			`open -a "${settings.defaultBrowser}" ${url}`,
+		);
 	}
 }

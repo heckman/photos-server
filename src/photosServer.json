@@ -6,10 +6,10 @@
 	"copyright": "Copyright 2026 Erik Ben Heckman <erik@heckman.ca>",
 	"target": "/dist/Photos Server.app",
 	"entry": "photosServer.jxa",
-	"prescript": [
-		"const predicate = (url) => url.host.js == \"photos.local\";",
-		"const defaultOpenCommand = \"open -a Safari\";"
-	],
+	"settings": {
+		"authority": "photos.local",
+		"defaultBrowser": "Safari"
+	},
 	"icon": "icon/AppIcon.icon",
 	"legacyIcon": "icon/Sequoia/light.png",
 	"contents": "contents",
