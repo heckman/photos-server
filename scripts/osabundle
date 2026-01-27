@@ -170,8 +170,8 @@ compile_script(){ local script_file="$1"
 
 	cat <(
 		jq -r '
-			select(has("settings")) |
-			"const settings=\(.settings|@json);\n"
+			.constants // halt | to_entries[] |
+			"const \(.key)=\(.value|@json);"
 		' <<<"$config"
 	) <(get_prop .prescript[]) "$script_file" |
 	osacompile -l "$osa_language" -o "$target" ||

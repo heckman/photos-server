@@ -8,7 +8,7 @@
 //   that do not match the defined authority.
 //
 // Example:
-settings = { authority: "photos.local", defaultBrowser: "Safari" };
+// const settings = { authority: "photos.local", defaultBrowser: "Safari" };
 
 function GURLGURL(url) {
 	const urlObj = $.NSURL.URLWithString(url);
