@@ -1,0 +1,29 @@
+#!/bin/sh
+(
+
+if ! cd "$(git rev-parse --show-toplevel)/src/port-forwarding"
+then
+	echo Could not change directory.
+	exit 1
+fi
+
+if grep ' photos.local$' /etc/hosts
+then
+	if \
+	echo 'creating backup of /etc/hosts at ./hosts.bak' &&
+	sudo rm ./hosts.bak && cp /etc/hosts ./hosts.bak &&
+	echo 'removing photos.local from /etc/hosts...' &&
+	grep -v ' photos.local$' ./hosts.bak | sudo tee /etc/hosts >/dev/null
+	then
+		echo 'photos.local has been removed from /etc/hosts'
+		exit 0
+	else
+		echo 'failed to remove photos.local from /etc/hosts'
+		exit 1
+	fi
+else
+	echo 'photos.local was not found in /etc/hosts'
+	exit 0
+fi
+
+)

@@ -25,10 +25,6 @@
 
 set -e
 
-# shellcheck disable=SC2034
-silent=0  error=1 warn=3 info=4 debug=5
-vebosity=$debug
-
 
 # dependencies can be installed via homebrew:
 #   brew bash install jq coreutils
@@ -40,7 +36,8 @@ JQ=/opt/homebrew/bin/jq
 # the location of bash also needs to be specified in the shebang
 # bash needs to support associative arrays, which is in bash 4.0
 
-TEMP_TEMPLATE=ca.heckman.photos-server.exported-media-item
+LOGGER_TAG=ca.heckman.PhotoServer
+TEMP_TEMPLATE=ca.heckman.PhotoServer.exported-media-item
 TIMEOUT_SECONDS=150  # time given to Photos to respond to request
 
 
@@ -49,7 +46,7 @@ main(){
 	# shellcheck disable=SC2034  # not using method or protocol
 	read -r method path protocol
 
-	info "Request path: $path"
+	notice "Request path: $path"
 
 	local -a url_components
 	while read -r part
@@ -61,8 +58,8 @@ main(){
 	local query="${url_components[1]}"
 	local basename="${url_components[-1]}"
 
-	debug "Query: $query"
-	debug "Basename: $basename"
+	info "Query: $query"
+	info "Basename: $basename"
 
 	local tmpdir
 	tmpdir="$(mktemp -d -t $TEMP_TEMPLATE)" || die ERR_TEMP
@@ -72,18 +69,14 @@ main(){
 	local result
 	result="$(export_media_item_from_photos "$query" "$tmpdir")" || {
 		case $? in
-		124) die ERR_TIMEOUT 504;;
+		124) die ERR_TIMEOUT;;
 		1) die ERR_JXA ;;
 		*) die $?;;
 		esac
 	}
 
-	debug "Result=$result"
-	[[ -n "$result" ]] || {
-		info "No matching media items."
-		canned_response 404
-		exit 0
-	}
+	info "Result: ${result}"
+	[[ -n "$result" ]] || die NOT_FOUND
 
 	local filename filesize filetype extension
 	filename="$(any_file_in "$tmpdir")" || die ERR_EXPORT
@@ -91,7 +84,7 @@ main(){
 	filetype="$(file -b --mime-type "$filename")"
 	extension="${filename##*.}"
 
-	info "Serving 200 OK: $basename.$extension"
+	notice "Serving 200 OK: $basename.$extension"
 
 	echo "HTTP/1.1 200 OK
 Content-Type: $filetype
@@ -103,23 +96,21 @@ Content-Disposition: inline; filename=$basename.$extension
 }
 
 
-
 die(){
-	local -A error_messages=(
-		[ERR_UNDEFINED]="Undefined error"
-		[ERR_TEMP]="Failed to create temporary directory"
-		[ERR_JXA]="Failed to run jxa"
-		[ERR_EXPORT]="Failed to find exported file"
-		[ERR_TIMEOUT]="Request to Photos timed out."
+	local -A errors=(
+		[NOT_FOUND]="warning 404 No matching media item found."
+		[ERR_TEMP]="crit 500 Failed to create temporary directory."
+		[ERR_JXA]="crit 500 Failed to run jxa."
+		[ERR_EXPORT]="crit 500 Failed to find exported file."
+		[ERR_TIMEOUT]="err 504 Request to Photos timed out."
 	)
-	error "$1"
-	canned_response "${2:-500}"
-	exit 1
-}
+	local error="${errors[$1]:-crit 500 Unknown error: $1}"
+	read -r level code message <<< "$error"
+	log "$level" "$message"
 
-canned_response(){
+
 	local description filename
-	case "$1" in
+	case "$code" in
 	404)
 		description="Not Found"
 		filename="missing.svg";;
@@ -135,7 +126,7 @@ canned_response(){
 	# all canned responses are svg images
 	local content_type="svg+xml"
 
-	info "Serving $1: $filename"
+	notice "Serving $1: $filename"
 
 	echo -n "HTTP/1.1 $1 $description
 Content-Type: $content_type
@@ -143,19 +134,36 @@ Content-Length: $length
 Content-Disposition: inline; filename=$filename
 
 $content";
+	exit $((code>=500))
 }
 
 any_file_in(){
 	find "$1" -maxdepth 1 -type f ! -name '.*' 2>/dev/null | grep -F ''
 }
 
-log(){ date +"%Y-%m-%d %H:%M:%S $1" >&2; }
-debug(){ [[ $vebosity -lt $debug ]] || log "[ DEBUG ]  $1"; }
-info(){ [[ $vebosity -lt $info ]] || log "[ INFO ]  $1"; }
-error(){ [[ $vebosity -lt $error ]] || log "[ ERROR ]  $1"; }
+
+# write to system logger
+#
+# level is sone of: info notice warning err crit
+#   debug -- dumped scripts
+#   info -- intermediate values
+#   notice -- requests & responses
+#   warning -- resource not found
+#   err -- timeout fetching data
+#   crit -- things that should never happen
+log(){ local level="$1" message="$2"
+	logger -t "$LOGGER_TAG" -p "user.$level" "$message"
+}
+debug(){ log debug "$1"; }
+info(){ log info "$1"; }
+notice(){ log notice "$1"; }
+# warning(){ log warning "$1"; }
+# err(){ log err "$1"; }
+# crit(){ log crit "$1"; }
 
 export_media_item_from_photos(){ local query="$1" tmpdir="$2"
-	local jxa="$(cat <<EOF
+	local jxa
+	jxa="$(cat <<EOF
 (
 	(args)=>{
 		app=Application("Photos");

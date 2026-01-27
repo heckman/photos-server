@@ -1,0 +1,33 @@
+#!/bin/sh
+(
+
+if ! cd "$(git rev-parse --show-toplevel)/src/port-forwarding"
+then
+	echo Could not change directory.
+	exit 1
+fi
+
+sudo launchctl unload -w /Library/LaunchDaemons/ca.heckman.PhotosServer.port-forwarding.plist > /dev/null 2>&1
+
+if {
+	! test -f /Library/LaunchDaemons/ca.heckman.PhotosServer.port-forwarding.plist ||
+	sudo rm -i /Library/LaunchDaemons/ca.heckman.PhotosServer.port-forwarding.plist
+} && {
+	! test -f /etc/pf.anchors/ca.heckman.PhotosServer.port-forwarding ||
+	sudo rm -i /etc/pf.anchors/ca.heckman.PhotosServer.port-forwarding
+}
+then
+	if sudo pfctl -F all -f /etc/pf.conf > /dev/null 2>&1
+	then
+		echo Packet filter rules have been reset.
+		exit 0
+	else
+		echo Failed to reset packet filter rules.
+		exit 1
+	fi
+else
+	echo Failed or aborted.
+	exit 1
+fi
+
+)

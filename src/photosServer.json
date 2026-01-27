@@ -1,15 +1,18 @@
 {
-	"script-bundler": { "version": "1.0" },
-	"target": "/dist/Photos Launcher.app",
-	"script": "/src/photos-launcher.jxa",
-	"name": "Photos Launcher",
+	"osabundle": "0.1",
+	"name": "Photos Server",
 	"version": "0.1",
-	"identifier": "ca.heckman.photos-launcher",
+	"identifier": "ca.heckman.PhotosServer",
 	"copyright": "Copyright 2026 Erik Ben Heckman <erik@heckman.ca>",
-	"inline": [
+	"target": "/dist/Photos Server.app",
+	"entry": "photosServer.jxa",
+	"prescript": [
 		"const predicate = (url) => url.host.js == \"photos.local\";",
 		"const defaultOpenCommand = \"open -a Safari\";"
 	],
+	"icon": "icon/AppIcon.icon",
+	"legacyIcon": "icon/Sequoia/light.png",
+	"contents": "contents",
 	"plist": {
 		"CFBundleDocumentTypes": [
 			{

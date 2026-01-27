@@ -1,0 +1,22 @@
+#!/bin/sh
+(
+if ! cd "$(git rev-parse --show-toplevel)/src/port-forwarding"
+then
+	echo Could not change directory.
+	exit 1
+fi
+
+if \
+sudo cp -i ca.heckman.PhotosServer.port-forwarding /etc/pf.anchors/ &&
+sudo cp -i ca.heckman.PhotosServer.port-forwarding.plist /Library/LaunchDaemons/
+then
+	sudo launchctl unload /Library/LaunchDaemons/ca.heckman.PhotosServer.port-forwarding.plist >/dev/null 2>&1
+	sudo launchctl load -w /Library/LaunchDaemons/ca.heckman.PhotosServer.port-forwarding.plist >/dev/null 2>&1
+	echo Requests to 127.0.0.3:80 should be redirected to 127.0.0.1:6330
+	exit 0
+else
+	echo Redirection installation failed or aborted.
+	exit 1
+fi
+
+)

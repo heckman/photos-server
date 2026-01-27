@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+
+readonly usage='
+ussage: makeicons <png-file> <icns-file>
+
+Writes a .icns file to stdout, or to a file with the -o option,
+using the png file provided.
+
+Options:
+	-t, --temp    <temp-dir>
+	-h, --help
+
+If the --temp option is used, intermediate files will be
+written to <temp-dir>, clobbering like-named files. Otherwise a
+system-provided temp directory will be used.
+
+'
+
+declare output='/dev/stdout'
+declare temp_dir=''
+readonly sizes=( 16 16@2x 32 32@2x 48 48@2x 64 64@2x 128 128@2x 256 256@2x 512 512@2x 1024 )
+
+parse_args(){
+	local i=0
+	while [[ -n "${1:-}" ]]
+	do
+		debug "arg: $1"
+		case "$1" in
+		-h|--help) echo "$usage"; exit 0;;
+		-t|--temp)
+			[[ -n "$2" ]] || die NO_ARG "$2"
+			temp_dir="$2"
+			shift; ((i++));;
+		--) shift; break;;
+		-*) die BAD_ARG "$1";;
+		*) break;;
+		esac
+		shift; ((i++))
+		debug "i: $i"
+	done
+	return "$i"
+}
+main(){
+	parse_args "$@"
+	shift "$?"
+	if [[ -n "$temp_dir" ]]
+	then
+		mkdir -p "$temp_dir"
+		debug "Using temp dir: $temp_dir"
+	else
+		temp_dir="$(mktemp -d -t icns)"
+		# shellcheck disable=SC2064  # expand temp_dir now
+		trap "rm -rf '$temp_dir'" EXIT
+	fi
+	local png="$1"
+	[[ -n "$png" ]] || die NO_PNG_ARG
+	[[ -f "$png" ]] || die NO_PNG_FILE "$png"
+
+	local output="$2"
+	[[ -n "$output" ]] || die NO_OUTPUT_ARG
+	[[ "$output" == *.icns ]] || die BAD_OUTPUT_NAME "$output"
+
+	make_style_icns "$png" "$output"
+}
+
+make_style_icns() { local png="$1"
+	local iconset="$temp_dir/icons.iconset"
+	mkdir -p "$iconset"
+	source_dimensions="$(
+		sips --getProperty pixelWidth "$png" |
+		awk '/pixelWidth/ { print $2 }'
+	)"
+	for size in "${sizes[@]}"
+	do
+		if [[ "$size" == *'@2x' ]]
+		then
+			((dimensions=${size%@2x}*2))
+			filename="icon_${size%@2x}x${size}.png"
+		else
+			dimensions=size
+			filename="icon_${size}x${size}.png"
+		fi
+		if [[ "$source_dimensions" -eq "$source_dimensions" ]]
+		then
+			cp "$png" "$iconset/$filename"
+		else
+			sips \
+			--resampleHeightWidthMax "$dimensions" \
+			--out "$iconset/$filename" \
+			"$png" \
+			> /dev/null 2>&1
+		fi
+	done
+	iconutil --convert icns "$iconset" --output "$output"
+}
+
+die() {
+	echo "$1" >&2; exit "${2:-1}";
+}
+debug() { :
+	# echo "$1" >&2
+}
+
+main "$@"

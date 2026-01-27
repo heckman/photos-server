@@ -2,21 +2,27 @@
 
 # set -x
 
-# these server settings can be changed to suit:
+# these server settings can be changed to suit
+# i'm using some system settings to make photos.local:80 resove here
 interface=localhost
 port=6330
 
-#  these can also be changed to a custom directory:
-photos_server_home="${XDG_DATA_HOME:-$HOME/.local/share}/photos-server"
+# this is used to define the two following locations
+# (it will also be the working directory of the server process
+# but at the moment the working directory does not matter.)
+photos_server_home="/Applications/Photos Server.app/Contents"
+# these specify the locations of installed files.
+# they can not be moved after installation.
+# set log_location to /dev/null to disable logging.
+http_handler="$photos_server_home/MacOS/photos-http-handler"
 
-# set log_location to wherever, or /dev/null to disable.
-# log_location="/dev/null"
-log_location="$photos_server_home/photos-server.log"
+### DO NOT CHANGE ANYTHING AFTER THIS POINT
 
-# don't change these:
-launch_agent_label="ca.heckman.photos-server.listener"
+# one more file will be installed, to the User LaunchAgents directory.
+# I suggest leaving it named as it is.
+launch_agent_label="ca.heckman.PhotosServer.listener"
 launch_agent="$HOME/Library/LaunchAgents/$launch_agent_label.plist"
-http_handler="$photos_server_home/bin/http-handler"
+
 
 
 
@@ -46,7 +52,7 @@ do_tasks(){
 	esac
 }
 is_server_running(){
-	if  launchctl list | grep -q 'ca.heckman.photos-server'
+	if  launchctl list | grep -qF "$launch_agent_label"
 	then
 		echo "Server is running."
 		return 0
@@ -103,14 +109,12 @@ install_agent(){
                 <true/>
             </dict>
         </dict>
+
         <key>inetdCompatibility</key>
         <dict>
             <key>Wait</key>
             <false/>
         </dict>
-
-        <key>StandardErrorPath</key>
-        <string>$log_location</string>
 
         <key>RunAtLoad</key>
         <true/>

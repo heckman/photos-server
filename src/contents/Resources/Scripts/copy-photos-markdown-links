@@ -108,6 +108,6 @@ function run(args) {
 			throw e;
 		}
 	} finally {
-		return alert.title;
+		return title;
 	}
 }

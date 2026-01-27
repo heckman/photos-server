@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+    <dict>
+        <key>Label</key>
+        <string>ca.heckman.PhotosServer.port-forwarding</string>
+        <key>ProgramArguments</key>
+        <array>
+            <string>/sbin/pfctl</string>
+            <string>-e</string>
+            <string>-a</string>
+            <string>com.apple/ca.heckman.PhotosServer</string>
+            <string>-f</string>
+            <string>/etc/pf.anchors/ca.heckman.PhotosServer.port-forwarding</string>
+        </array>
+        <key>RunAtLoad</key>
+        <true/>
+        <key>KeepAlive</key>
+        <false/>
+        <key>UserName</key>
+        <string>root</string>
+    </dict>
+</plist>
