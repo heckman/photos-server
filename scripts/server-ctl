@@ -41,11 +41,11 @@ do_tasks(){
 	restart)
 		stop_server && start_server ;;
 	install)
-		install_agent && install_handler ;;
+		install_agent ;;
 	uninstall)
-		stop_server && uninstall_agent && uninstall_handler ;;
+		stop_server && uninstall_agent ;;
 	reset)
-		stop_server && install_agent && install_handler && start_server ;;
+		stop_server && install_agent && start_server ;;
 	*)
 		echo "$usage">&2
 		exit 1 ;;
