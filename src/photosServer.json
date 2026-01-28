@@ -12,6 +12,7 @@
 			"defaultBrowser": "Safari",
 			"portString": "6330"
 		},
+		"HOMEPAGE": "https://github.com/heckman/photos-server",
 		"HANDLER": "/Applications/Photos Server.app/Contents/MacOS/Photos Server"
 	},
 	"icon": "icon/AppIcon.icon",

@@ -102,28 +102,33 @@ function pause() {
 }
 
 function primeModal() {
+	const browser = config.get("defaultBrowser");
+	const port = launchAgent.getPort();
 	const isRunning = launchAgent.isRunning();
 	const status = isRunning
-		? "Server is running on port " + launchAgent.getPort() || 0
+		? port
+			? "Serving photos on 127.0.0.1:" + port
+			: "Something is wrong with the port setting."
 		: "Server is stopped.";
 	const settings =
-		"Authority: " +
+		"Hostname opened in Photos: " +
 		config.get("authority") +
-		"\nDefault Browser: " +
-		config.get("defaultBrowser");
+		"\nDefault browser for everything else: " +
+		browser;
 	const action = app.chooseFromList(
 		[
 			`${isRunning ? "Restart" : "Start"} server`,
 			"Stop server",
-			"Set authority",
-			"Set default browser",
+			"Set hostname",
+			"Set preferred browser",
+			"Visit Photos Server homepage and quit",
 		],
 		{
 			withTitle: "Photos Server Control",
 			withPrompt: status + "\n\n" + settings + "\n\n",
 			defaultItems: [],
 			okButtonName: "Select",
-			cancelButtonName: "Done",
+			cancelButtonName: "Quit",
 			multipleSelectionsAllowed: false,
 			emptySelectionAllowed: false,
 		},
@@ -136,24 +141,33 @@ function primeModal() {
 		} else if (action[0].includes("tart")) {
 			portModal();
 			primeModal();
-		} else if (action[0].includes("authority")) {
+		} else if (action[0].includes("host")) {
 			authorityModal();
 			primeModal();
 		} else if (action[0].includes("browser")) {
 			browserModal();
 			primeModal();
+		} else if (action[0].includes("homepage")) {
+			app.displayAlert("Opening homepage...", {
+				givingUpAfter: 1,
+			});
+			// Application(browser).activate();
+			app.doShellScript(`open -a ${browser} ${HOMEPAGE}`);
 		}
 }
 function authorityModal() {
 	try {
-		const authority = app.displayDialog("Set authority", {
-			defaultAnswer: config.get("authority"),
-			hiddenAnswer: false,
-			buttons: ["Cancel", "OK"],
-			defaultButton: "OK",
-			cancelButton: "Cancel",
-			withTitle: "Authority",
-		});
+		const authority = app.displayDialog(
+			"Links to this host will be opened in Photos",
+			{
+				defaultAnswer: config.get("authority"),
+				hiddenAnswer: false,
+				buttons: ["Cancel", "OK"],
+				defaultButton: "OK",
+				cancelButton: "Cancel",
+				withTitle: "Set Hostname",
+			},
+		);
 		config.set("authority", authority.textReturned);
 	} catch {
 		// ignore error
@@ -203,7 +217,7 @@ function validPort(port) {
 		return false;
 	}
 }
-function portModal(errorMessage = "Set port") {
+function portModal(errorMessage = "Select the port") {
 	try {
 		const port = app.displayDialog(errorMessage, {
 			defaultAnswer: launchAgent.getPort(),
@@ -211,7 +225,9 @@ function portModal(errorMessage = "Set port") {
 			buttons: ["Cancel", "OK"],
 			defaultButton: "OK",
 			cancelButton: "Cancel",
-			withTitle: "Port",
+			withTitle: launchAgent.isRunning()
+				? "Restart Server"
+				: "Start Server",
 		});
 		if (port.buttonReturned === "OK") {
 			if (validPort(port.textReturned)) {
@@ -287,4 +303,5 @@ function GURLGURL(url) {
 			`open -a "${config.get("defaultBrowser")}" ${url}`,
 		);
 	}
+	return true;
 }
