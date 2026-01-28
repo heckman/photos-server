@@ -1,0 +1,93 @@
+#!/bin/sh
+
+set -eu
+
+source_dir="$(git rev-parse --show-toplevel)/src/port-forwarding"
+
+
+daemon_label="ca.heckman.PhotosServer.port-forwarding"
+pf_anchor="com.apple/ca.heckman.PhotosServer"
+
+# the following should not be changed
+plist_file="$daemon_label.plist"
+source_plist="$source_dir/$plist_file"
+installed_launch_daemon="/Library/LaunchDaemons/$plist_file"
+
+usage="Usage: ${0##*/} [test|status|enable|disable]
+
+commands:
+	test    exits with 0 status if port-forwarding is active,
+	        otherwise exits with 1.
+	        other commands exit 0 on success, 1 on failure
+	status  print status of port-forwarding
+	enable  enable port-forwarding
+	disable disable port-forwarding
+"
+
+main () {
+	case "${1:-}" in
+	test) is_forwading ;;
+	print) print_port_forwarding ;;
+	flush) flush ;;
+	status) print_status ;;
+	enable) enable_port_forwarding ;;
+	disable) disable_port_forwarding ;;
+	-h|--help) echo "$usage" ;;
+	*) die "$usage" 2;;
+	esac
+}
+
+die() {
+	echo "$1" >&2; exit "${2:-1}";
+}
+print_port_forwarding(){
+	sudo pfctl -q -a "$pf_anchor" -s nat
+}
+print_status(){
+	print_port_forwarding |
+	sed -E 's/^.* ([0-9.]*) port[ =]*([0-9]*) -> ([0-9.]*) port ([0-9.]*).*$/Requests to \1:\2 should be forwarded to \3:\4/' |
+	grep . || echo "Photos Server port-forwarding is disabled."
+}
+is_forwading(){
+	print_port_forwarding |
+	grep -q .
+}
+bootout(){
+	if is_forwading
+	then sudo launchctl bootout "system/$daemon_label"
+	fi
+}
+bootstrap(){
+	sudo launchctl bootstrap system "$installed_launch_daemon"
+}
+flush(){
+	sudo pfctl -a "$pf_anchor" -F all > /dev/null 2>&1
+}
+enable_port_forwarding(){
+	test -f  "$source_plist" ||
+		die "No plist at '$source_plist'"
+	sudo cp -i "$source_plist" "$installed_launch_daemon" ||
+		die "Failed to copy plist to '$installed_launch_daemon'"
+	bootout ||
+		die "Could not disable existing port-forwarding"
+	bootstrap ||
+		die "Could not enable port-forwarding"
+	sleep 0.5
+	print_status
+}
+disable_port_forwarding(){
+	bootout ||
+		die "Could not disable port-forwarding"
+	flush ||
+		die "Failed to flush port-forwarding rules"
+	if test -f "$installed_launch_daemon"
+	then sudo rm "$installed_launch_daemon" ||
+		die "Failed to remove launch daemon plist at '$installed_launch_daemon'"
+	fi
+	! is_forwading ||
+		die "Error: Port forwarding is still active"
+	echo "Photo Server port forwarding is uninstalled."
+}
+
+
+main "$@"
