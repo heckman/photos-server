@@ -1,0 +1,30 @@
+#!/bin/sh
+
+set -eu
+
+source_dir="$(git rev-parse --show-toplevel)/src/port-forwarding"
+plist_file="ca.heckman.PhotosServer.port-forwarding.plist"
+
+# these should not be changed
+source_plist="$source_dir/$plist_file"
+installed_launch_daemon="/Library/LaunchDaemons/$plist_file"
+
+
+if ! test -f  "$source_plist"
+then
+	echo "Could not find plist for launch daemon at '$source_plist'."
+	exit 1
+fi
+
+if \
+sudo cp -i "$source_plist" "$installed_launch_daemon"
+then
+	sudo launchctl unload "$installed_launch_daemon" >/dev/null 2>&1
+	sudo launchctl load -w "$installed_launch_daemon" &&
+	plutil -extract ProgramArguments.2 raw "$installed_launch_daemon" |
+	sed -E 's/^.* ([0-9.]*) port ([0-9]*) -> ([0-9.]*) port ([0-9.]*).*$/Rewuests to \1:\2 should now be forwarded to \3:\4/' &&
+	exit 0
+fi
+echo Port-forwarding failed or aborted.
+exit 1
+

@@ -1,0 +1,31 @@
+#!/bin/sh
+
+set -eu
+
+installed_launch_daemon="/Library/LaunchDaemons/ca.heckman.PhotosServer.port-forwarding.plist"
+# make sure the anchor name matches the one specified in the plist
+anchor_name="com.apple/ca.heckman.PhotosServer"
+
+
+
+# this will fail if the daemon isn't actually loaded
+sudo launchctl unload -w "$installed_launch_daemon" > /dev/null 2>&1
+
+if
+	! test -f "$installed_launch_daemon" ||
+	sudo rm -i "$installed_launch_daemon"
+then
+	if sudo pfctl -a "$anchor_name" -F all 2>&1
+	then
+		echo Photo Server port forwarding have been removed.
+		exit 0
+	else
+		echo Failed to remove port forwarding rules.
+		exit 1
+	fi
+else
+	echo Failed or aborted.
+	exit 1
+fi
+
+)
