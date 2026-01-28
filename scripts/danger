@@ -1,0 +1,215 @@
+#!/bin/sh
+
+hostname=photos.local
+address=127.0.0.3
+port=6330
+
+daemon_label="ca.heckman.PhotosServer.port-forwarding"
+pf_anchor="com.apple/ca.heckman.PhotosServer"
+
+
+usage="Usage: ${0##*/} host|forwarding|plist [subcommand]
+
+commands:
+	host         manage /etc/hosts
+	forwarding   manage port-forwarding
+	plist        print the port-forwarding plist (not dangerous)
+
+For more information for hosts and forwarding commands, use
+	${0##*/} [command] --help
+
+"
+
+main(){
+	case "${1:-}" in
+	host) host_main "$2" ;;
+	forwarding) forwarding_main "$2" ;;
+	plist) plist_main;;
+	-h|--help|help)
+		case "${2:-}" in
+		host) ok "$host_usage" ;;
+		forwarding) ok "$forwarding_usage" ;;
+		plist) ok "$plist_usage" ;;
+		*) ok "$usage" ;;
+		esac ;;
+	*) die "$usage" 2;;
+	esac
+}
+
+die() {
+	echo "$1" >&2
+	exit "${2:-1}";
+}
+ok() {
+	echo "$1"
+	exit 0;
+}
+
+host_usage="
+usage: ${0##*/} host [test|status|add|remove]
+subcommands:
+	test    exits with 0 status if $hostname is in /etc/hosts,
+	        otherwise exits with 1.
+	        other commands exit 0 on success, 1 on failure
+	status  print the host address for $hostname
+	add     add $hostname to /etc/hosts as $address
+	remove  remove $hostname from /etc/hosts
+
+"
+
+host_main(){
+	case "$1" in
+	test) is_in_hosts ;;
+	status) print_host_address ;;
+	add) add_hostname ;;
+	remove) remove_hostname ;;
+	-h|--help|help) ok "$host_usage" ;;
+	*) die "$host_usage" 2;;
+	esac
+}
+
+print_host_address(){
+	grep "[[:space:]]${hostname}\$" /etc/hosts
+}
+is_in_hosts(){
+	grep -q "[[:space:]]${hostname}\$" /etc/hosts
+}
+add_hostname(){
+	! is_in_hosts || ok "$hostname is already in /etc/hosts"
+	# shellcheck disable=SC2015  # ok exits, so A && B || C is fine
+	printf '%-16s%s' "$address" "$hostname" |
+	sudo tee -a /etc/hosts >/dev/null &&
+	ok "$hostname has been added to /etc/hosts as $address" ||
+		die "failed to add $hostname to /etc/hosts"
+}
+remove_hostname(){
+	is_in_hosts || ok "$hostname is not in /etc/hosts"
+	# shellcheck disable=SC2015  # ok exits, so A && B || C is fine
+	hosts=$(cat /etc/hosts) &&
+	printf '%s' "$hosts" |
+	grep -v "[[:space:]]${hostname}\$" |
+	sudo tee /etc/hosts >/dev/null &&
+		ok "$hostname has been removed from /etc/hosts" ||
+		die "failed to remove $hostname from /etc/hosts"
+}
+
+forwarding_usage="usage: ${0##*/} forwarding [test|status|enable|disable]
+
+subcommands:
+	test    exits with 0 status if port-forwarding is active,
+	        otherwise exits with 1.
+	        other commands exit 0 on success, 1 on failure
+	status  print status of port-forwarding
+	enable  enable port-forwarding
+	disable disable port-forwarding
+"
+
+# the following should not be changed
+installed_launch_daemon="/Library/LaunchDaemons/$daemon_label.plist"
+
+forwarding_main () {
+	case "${1:-}" in
+	test) is_forwading ;;
+	print) print_forwarding ;;
+	plist) print_forwarding_plist ;;
+	flush) forwading_flush ;;
+	status) forwarding_status ;;
+	enable) enable_port_forwarding ;;
+	disable) disable_port_forwarding ;;
+	-h|--help|help) ok "$forwarding_usage" ;;
+	*) die "$forwarding_usage" 2;;
+	esac
+}
+print_forwarding_plist(){
+	cat "$installed_launch_daemon"
+}
+print_forwarding(){
+	sudo pfctl -q -a "$pf_anchor" -s nat
+}
+forwarding_status(){
+	print_forwarding |
+	sed -E 's/^.* ([0-9.]*) port[ =]*([0-9]*) -> ([0-9.]*) port ([0-9.]*).*$/Requests to \1:\2 should be forwarded to \3:\4/' |
+	grep . || echo "Photos Server port-forwarding is disabled."
+}
+is_forwading(){
+	print_forwarding |
+	grep -q .
+}
+forwading_bootout(){
+	if is_forwading
+	then sudo launchctl bootout "system/$daemon_label"
+	fi
+}
+forwarding_bootstrap(){
+	sudo launchctl bootstrap system "$installed_launch_daemon"
+}
+forwading_flush(){
+	sudo pfctl -a "$pf_anchor" -F all > /dev/null 2>&1
+}
+enable_port_forwarding(){
+	print_plist | sudo tee "$installed_launch_daemon" >/dev/null ||
+		die "Failed to write plist to '$installed_launch_daemon'"
+	forwading_bootout ||
+		die "Could not disable existing port-forwarding"
+	forwarding_bootstrap ||
+		die "Could not enable port-forwarding"
+	sleep 0.5
+	forwarding_status
+}
+disable_port_forwarding(){
+	forwading_bootout ||
+		die "Could not disable port-forwarding"
+	forwading_flush ||
+		die "Failed to flush port-forwarding rules"
+	if test -f "$installed_launch_daemon"
+	then sudo rm "$installed_launch_daemon" ||
+		die "Failed to remove launch daemon plist at '$installed_launch_daemon'"
+	fi
+	! is_forwading ||
+		die "Error: Port forwarding is still active"
+	echo "Photo Server port forwarding is uninstalled."
+}
+
+plist_usage="usage: ${0##*/} plist [test|status|enable|disable]
+
+This prints the plist for the launch daemon.
+It has no subcommands.
+It is not dangerous.
+
+"
+
+plist_main(){
+	print_plist
+}
+
+print_plist(){
+	cat <<EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+    <dict>
+        <key>Label</key>
+        <string>${daemon_label}</string>
+        <key>ProgramArguments</key>
+        <array>
+            <string>/bin/sh</string>
+            <string>-c</string>
+            <string>/bin/echo "rdr pass on lo0 inet proto tcp from any to ${address} port 80 -> 127.0.0.1 port ${port}" | /sbin/pfctl -a ${pf_anchor} -f -</string>
+        </array>
+        <key>RunAtLoad</key>
+        <true/>
+        <key>KeepAlive</key>
+        <false/>
+        <key>UserName</key>
+        <string>root</string>
+    </dict>
+</plist>
+EOF
+
+}
+
+
+
+
+
+main "$@"
