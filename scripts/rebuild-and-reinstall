@@ -17,6 +17,6 @@ rm -rf "/Applications/Photos Server.app"
 # install
 mv dist/Photos\ Server.app /Applications
 
-## force reregistration
+# force reregistration
 # /System/Library/Frameworks/CoreServices.framework/Versions/A/Frameworks/LaunchServices.framework/Versions/A/Support/lsregister -f /Applications/Photos\ Server.app
 
