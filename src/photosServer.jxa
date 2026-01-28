@@ -1,3 +1,248 @@
+ObjC.import("Foundation");
+ObjC.import("unistd");
+ObjC.import("AppKit");
+
+const app = Application.currentApplication();
+app.includeStandardAdditions = true;
+
+const config = ((defaults) => {
+	const d = $.NSUserDefaults.standardUserDefaults;
+	d.registerDefaults($(defaults));
+	return {
+		get: (key) => d.objectForKey(key).js,
+		set: (key, value) => d.setObjectForKey($(value), key),
+	};
+})(DEFAULTS);
+
+const launchAgent = (() => {
+	const bid = $.NSBundle.mainBundle.bundleIdentifier.js;
+	const uid = $.getuid();
+	const label = bid + ".listener";
+	const plistDir = `${app.pathTo("home folder")}/Library/LaunchAgents`;
+	const plistPath = `${plistDir}/${label}.plist`;
+	return {
+		disable: () => {
+			try {
+				app.doShellScript(
+					`launchctl bootout gui/${uid}/${label} 2>/dev/null`,
+				);
+				return true;
+			} catch {
+				return false;
+			}
+		},
+		enable: () => {
+			try {
+				app.doShellScript(
+					`launchctl bootstrap gui/${uid} ${plistPath} 2>/dev/null`,
+				);
+				return true;
+			} catch {
+				return false;
+			}
+		},
+		isRunning: () => {
+			try {
+				app.doShellScript(`
+					set -o pipefail
+					launchctl list | grep -Fq "${label}"
+				`);
+				return true;
+			} catch {
+				return false;
+			}
+		},
+		getPort: () => {
+			try {
+				return app.doShellScript(
+					`plutil -extract Sockets.Photos.SockServiceName raw ${plistPath}`,
+				);
+			} catch {
+				return "0";
+			}
+		},
+		save: function (port) {
+			const plistJson = {
+				Label: label,
+				Program: HANDLER,
+				RunAtLoad: true,
+				Sockets: {
+					Photos: {
+						SockNodeName: "localhost",
+						SockServiceName: port.toString(),
+						SockPassive: true,
+					},
+				},
+				inetdCompatibility: {
+					Wait: false,
+				},
+				RunAtLoad: true,
+			};
+			try {
+				app.doShellScript(`
+					set -o pipefail
+					mkdir -p '${plistDir}' &&
+					printf '%s' '${JSON.stringify(plistJson)}' |
+					plutil -convert xml1 -o '${plistPath}' -
+				`);
+				this.disable();
+				this.enable();
+				return true;
+				app.displayAlert("Server updated.");
+			} catch (e) {
+				app.displayAlert("Error: " + e.message);
+				return false;
+			}
+		},
+	};
+})();
+
+function pause() {
+	delay(0.2);
+}
+
+function primeModal() {
+	const isRunning = launchAgent.isRunning();
+	const status = isRunning
+		? "Server is running on port " + launchAgent.getPort() || 0
+		: "Server is stopped.";
+	const settings =
+		"Authority: " +
+		config.get("authority") +
+		"\nDefault Browser: " +
+		config.get("defaultBrowser");
+	const action = app.chooseFromList(
+		[
+			`${isRunning ? "Restart" : "Start"} server`,
+			"Stop server",
+			"Set authority",
+			"Set default browser",
+		],
+		{
+			withTitle: "Photos Server Control",
+			withPrompt: status + "\n\n" + settings + "\n\n",
+			defaultItems: [],
+			okButtonName: "Select",
+			cancelButtonName: "Done",
+			multipleSelectionsAllowed: false,
+			emptySelectionAllowed: false,
+		},
+	);
+	if (action !== false)
+		if (action[0].includes("top")) {
+			launchAgent.disable();
+			pause("Stopping server");
+			primeModal();
+		} else if (action[0].includes("tart")) {
+			portModal();
+			primeModal();
+		} else if (action[0].includes("authority")) {
+			authorityModal();
+			primeModal();
+		} else if (action[0].includes("browser")) {
+			browserModal();
+			primeModal();
+		}
+}
+function authorityModal() {
+	try {
+		const authority = app.displayDialog("Set authority", {
+			defaultAnswer: config.get("authority"),
+			hiddenAnswer: false,
+			buttons: ["Cancel", "OK"],
+			defaultButton: "OK",
+			cancelButton: "Cancel",
+			withTitle: "Authority",
+		});
+		config.set("authority", authority.textReturned);
+	} catch {
+		// ignore error
+	}
+}
+
+function browserList() {
+	const ws = $.NSWorkspace.sharedWorkspace;
+	const appURLs = ws.URLsForApplicationsToOpenURL(
+		$.NSURL.URLWithString($("https://apple.com")),
+	);
+	return appURLs.js
+		.map((url) => {
+			const name =
+				$.NSFileManager.defaultManager.displayNameAtPath(
+					url.path,
+				);
+			// Force a native JS string primitive
+			return String(ObjC.unwrap(name));
+		})
+		.filter((name) => name !== "Photos Server");
+}
+function browserModal() {
+	const browser = app.chooseFromList(browserList(), {
+		withTitle: "Select Default Browser",
+		withPrompt: "Pick one",
+		defaultItems: [config.get("defaultBrowser")],
+		okButtonName: "Select",
+		cancelButtonName: "Cancel",
+		multipleSelectionsAllowed: false,
+		emptySelectionAllowed: false,
+	});
+	if (browser !== false) {
+		config.set("defaultBrowser", String(browser[0]));
+	}
+}
+function validPort(port) {
+	try {
+		port = parseInt(port);
+		return (
+			port >= 1024 &&
+			port <= 65535 &&
+			port != 5000 &&
+			port != 7000
+		);
+	} catch {
+		return false;
+	}
+}
+function portModal(errorMessage = "Set port") {
+	try {
+		const port = app.displayDialog(errorMessage, {
+			defaultAnswer: launchAgent.getPort(),
+			hiddenAnswer: false,
+			buttons: ["Cancel", "OK"],
+			defaultButton: "OK",
+			cancelButton: "Cancel",
+			withTitle: "Port",
+		});
+		if (port.buttonReturned === "OK") {
+			if (validPort(port.textReturned)) {
+				launchAgent.save(port.textReturned);
+				pause("Starting server");
+			} else {
+				portModal(`${port.textReturned} is an invalid port.`);
+			}
+		}
+	} catch {
+		//
+	}
+}
+function run() {
+	primeModal();
+}
+// 	reply = app.displayDialog("Test", {
+// 		defaultAnswer: self.get("authority"),
+// 		hiddenAnswer: false,
+// 		buttons: ["Cancel", "OK"],
+// 		defaultButton: "OK",
+// 		cancelButton: "Cancel",
+// 		withTitle: "This is a test",
+// 	});
+
+// 	if (reply.buttonReturned === "OK") {
+// 		self.set("authority", reply.textReturned);
+// 	}
+// 	app.displayAlert(self.get("authority"));
+// }
+
 // Preconditions:
 //
 // settings must be an object with the following properties:
@@ -8,16 +253,19 @@
 //   that do not match the defined authority.
 //
 // Example:
-// const settings = { authority: "photos.local", defaultBrowser: "Safari" };
+// const settings = {
+// 	authority: "photos.local",
+// 	defaultBrowser: "Safari",
+// };
 
 function GURLGURL(url) {
+	const authority = config
+		.get("authority")
+		.replace(/^(https?:\/\/)?/, "http://");
 	const urlObj = $.NSURL.URLWithString(url);
 	const host = urlObj.host.js;
 	const port = urlObj.port.js;
-	if (
-		(port && port !== 80 ? `${host}:${port}` : host) ===
-		settings.authority.replace(/:80$/, "")
-	) {
+	if (url.startsWith(authority)) {
 		const photos = Application("Photos");
 		const query = decodeURIComponent(
 			urlObj.lastPathComponent.js,
@@ -36,7 +284,7 @@ function GURLGURL(url) {
 		const app = Application.currentApplication();
 		app.includeStandardAdditions = true;
 		app.doShellScript(
-			`open -a "${settings.defaultBrowser}" ${url}`,
+			`open -a "${config.get("defaultBrowser")}" ${url}`,
 		);
 	}
 }

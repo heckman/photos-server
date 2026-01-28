@@ -7,10 +7,12 @@
 	"target": "/dist/Photos Server.app",
 	"entry": "photosServer.jxa",
 	"constants": {
-		"settings": {
+		"DEFAULTS": {
 			"authority": "photos.local",
-			"defaultBrowser": "Safari"
-		}
+			"defaultBrowser": "Safari",
+			"portString": "6330"
+		},
+		"HANDLER": "/Applications/Photos Server.app/Contents/MacOS/photos-http-handler"
 	},
 	"icon": "icon/AppIcon.icon",
 	"legacyIcon": "icon/Sequoia/light.png",
