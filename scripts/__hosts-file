@@ -1,0 +1,62 @@
+#!/bin/sh
+
+hostname=photos.local
+address=127.0.0.3
+
+usage="Usage: ${0##*/} [test|print|add|remove]
+
+commands:
+	test    exits with 0 status if $hostname is in /etc/hosts,
+	        otherwise exits with 1.
+	        other commands exit 0 on success, 1 on failure
+	status  print the host address for $hostname
+	add     add $hostname to /etc/hosts as $address
+	remove  remove $hostname from /etc/hosts
+
+"
+
+main(){
+	case "$1" in
+	test) is_in_hosts ;;
+	status) print_host_address ;;
+	add) add_hostname ;;
+	remove) remove_hostname ;;
+	-h|--help) echo "$usage" ;;
+	*) die "$usage" 2;;
+	esac
+}
+
+die() {
+	echo "$1" >&2
+	exit "${2:-1}";
+}
+ok() {
+	echo "$1"
+	exit 0;
+}
+print_host_address(){
+	grep "[[:space:]]${hostname}\$" /etc/hosts
+}
+is_in_hosts(){
+	grep -q "[[:space:]]${hostname}\$" /etc/hosts
+}
+add_hostname(){
+	! is_in_hosts || ok "$hostname is already in /etc/hosts"
+	# shellcheck disable=SC2015  # ok exits, so A && B || C is fine
+	printf '%-16s%s' "$address" "$hostname" |
+	sudo tee -a /etc/hosts >/dev/null &&
+	ok "$hostname has been added to /etc/hosts as $address" ||
+		die "failed to add $hostname to /etc/hosts"
+}
+remove_hostname(){
+	is_in_hosts || ok "$hostname is not in /etc/hosts"
+	# shellcheck disable=SC2015  # ok exits, so A && B || C is fine
+	hosts=$(cat /etc/hosts) &&
+	printf '%s' "$hosts" |
+	grep -v "[[:space:]]${hostname}\$" |
+	sudo tee /etc/hosts >/dev/null &&
+		ok "$hostname has been removed from /etc/hosts" ||
+		die "failed to remove $hostname from /etc/hosts"
+}
+
+main "$@"
