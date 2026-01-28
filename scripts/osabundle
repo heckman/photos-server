@@ -47,6 +47,13 @@ readonly -A errors=(
 
 main(){
 	local config_file script_file
+
+	if [[ $1 == -h || $1 == --help ]]
+	then
+		ok "$usage"
+		return 0
+	fi
+
 	case "$#" in
 		3) script_file="$3" ;&
 		2) target="$2" ;&
