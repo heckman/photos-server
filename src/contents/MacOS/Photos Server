@@ -23,6 +23,9 @@
 # If something unexpected occurs, a 500 HTTP resonse is printed
 # with a placeholder image.
 
+## This file is named `Photos Server` so that's how it will appear
+## in the notification center's warning about background tasks.
+
 set -e
 
 

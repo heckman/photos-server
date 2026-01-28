@@ -12,7 +12,7 @@
 			"defaultBrowser": "Safari",
 			"portString": "6330"
 		},
-		"HANDLER": "/Applications/Photos Server.app/Contents/MacOS/photos-http-handler"
+		"HANDLER": "/Applications/Photos Server.app/Contents/MacOS/Photos Server"
 	},
 	"icon": "icon/AppIcon.icon",
 	"legacyIcon": "icon/Sequoia/light.png",

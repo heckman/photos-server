@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
 ROOT="$(git rev-parse --show-toplevel)"
-HANDLER="/src/photos-http-handler"
+HANDLER="$ROOT/src/contents.MacOS/Photos Server"
 
-"${ROOT}/${HANDLER#/}" <<<"GET /${1#/}" | head -n 6
+"$HANDLER" <<<"GET /${1#/}" | head -n 6
