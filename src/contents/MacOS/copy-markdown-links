@@ -7,10 +7,23 @@
 //
 //
 //
-const origin = "http://photos.local";
 
 const photos = Application("Photos");
 photos.includeStandardAdditions = true;
+
+const app = Application.currentApplication();
+app.includeStandardAdditions = true;
+
+const defaultAuthority = "photos.local";
+
+const origin =
+	"http://" +
+	(
+		app.doShellScript(
+			"defaults read ca.heckman.PhotosServer authority 2>/dev/null || true",
+		) || defaultAuthority
+	).replace(/^https?:\/\//, "");
+
 
 function altText(props) {
 	return (
