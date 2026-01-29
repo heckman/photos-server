@@ -58,10 +58,10 @@ For more information for hosts and forwarding commands, use
 
 main(){
 	case "${1:-}" in
-	host) host_main "$2" ;;
-	forwarding) forwarding_main "$2" ;;
+	host) host_main "${2:-}" ;;
+	forwarding) forwarding_main "${2:-}" ;;
 	plist) plist_main;;
-	ok) ok_main "$2" ;;
+	ok) ok_main "${2:-}" ;;
 	-h|--help|help)
 		case "${2:-}" in
 		host) ok "$host_usage" ;;
