@@ -2,6 +2,12 @@ ObjC.import("Foundation");
 ObjC.import("unistd");
 ObjC.import("AppKit");
 
+// Preconditions:
+//
+//
+//
+//
+
 const app = Application.currentApplication();
 app.includeStandardAdditions = true;
 
@@ -103,36 +109,44 @@ function pause() {
 
 function primeModal() {
 	const browser = config.get("defaultBrowser");
+	const host = config.get("authority");
 	const port = launchAgent.getPort();
 	const isRunning = launchAgent.isRunning();
+	const redirections = app
+		.doShellScript(
+			`/Applications/Photos\\ Server.app/Contents/MacOS/redirections ${host}||:`,
+		)
+		.trim();
+	const redirectionListItems = redirections
+		? ["Display configured redirections"]
+		: [];
 	const status = isRunning
 		? port
 			? "Serving photos on 127.0.0.1:" + port
 			: "Something is wrong with the port setting."
 		: "Server is stopped.";
-	const settings =
-		"Hostname opened in Photos: " +
-		config.get("authority") +
-		"\nDefault browser for everything else: " +
-		browser;
-	const action = app.chooseFromList(
-		[
-			`${isRunning ? "Restart" : "Start"} server`,
-			"Stop server",
-			"Set hostname",
-			"Set preferred browser",
-			"Visit Photos Server homepage and quit",
-		],
-		{
-			withTitle: "Photos Server Control",
-			withPrompt: status + "\n\n" + settings + "\n\n",
-			defaultItems: [],
-			okButtonName: "Select",
-			cancelButtonName: "Quit",
-			multipleSelectionsAllowed: false,
-			emptySelectionAllowed: false,
-		},
-	);
+	const settings = `Links beginning with "http://${host}"
+will open in Photos.
+
+Everything else will open in ${browser}.`;
+	const list = [
+		`${isRunning ? "Restart" : "Start"} server`,
+		"Stop server",
+		"Set hostname that will open in Photos",
+		"Set browser for everything else",
+		...redirectionListItems,
+		"Visit Photos Server homepage and close",
+	];
+
+	const action = app.chooseFromList(list, {
+		withTitle: "Photos Server Control",
+		withPrompt: status + "\n\n" + settings + "\n\n",
+		defaultItems: [],
+		okButtonName: "Select",
+		cancelButtonName: "Done",
+		multipleSelectionsAllowed: false,
+		emptySelectionAllowed: false,
+	});
 	if (action !== false)
 		if (action[0].includes("top")) {
 			launchAgent.disable();
@@ -147,6 +161,9 @@ function primeModal() {
 		} else if (action[0].includes("browser")) {
 			browserModal();
 			primeModal();
+		} else if (action[0].includes("direct")) {
+			redirectionsModal(redirections);
+			primeModal();
 		} else if (action[0].includes("homepage")) {
 			app.displayAlert("Opening homepage...", {
 				givingUpAfter: 1,
@@ -154,6 +171,17 @@ function primeModal() {
 			// Application(browser).activate();
 			app.doShellScript(`open -a ${browser} ${HOMEPAGE}`);
 		}
+}
+function redirectionsModal(redirections) {
+	app.displayAlert(
+		redirections
+			? "Configured redirections\n(Not necessarily enabled)"
+			: "No redirections configured",
+		{
+			as: "informational",
+			message: redirections,
+		},
+	);
 }
 function authorityModal() {
 	try {
@@ -168,7 +196,10 @@ function authorityModal() {
 				withTitle: "Set Hostname",
 			},
 		);
-		config.set("authority", authority.textReturned);
+		config.set(
+			"authority",
+			authority.textReturned.replace(/^.*\//, ""),
+		);
 	} catch {
 		// ignore error
 	}
@@ -244,48 +275,12 @@ function portModal(errorMessage = "Select the port") {
 function run() {
 	primeModal();
 }
-// 	reply = app.displayDialog("Test", {
-// 		defaultAnswer: self.get("authority"),
-// 		hiddenAnswer: false,
-// 		buttons: ["Cancel", "OK"],
-// 		defaultButton: "OK",
-// 		cancelButton: "Cancel",
-// 		withTitle: "This is a test",
-// 	});
-
-// 	if (reply.buttonReturned === "OK") {
-// 		self.set("authority", reply.textReturned);
-// 	}
-// 	app.displayAlert(self.get("authority"));
-// }
-
-// Preconditions:
-//
-// settings must be an object with the following properties:
-// - authority: The host and port that urls will be matched against to
-//   determine if they should be opened in the Photos app. This must
-//   include the port, even if it is 80.
-// - defaultBBrowser: The name of the application that should open urls
-//   that do not match the defined authority.
-//
-// Example:
-// const settings = {
-// 	authority: "photos.local",
-// 	defaultBrowser: "Safari",
-// };
 
 function GURLGURL(url) {
-	const authority = config
-		.get("authority")
-		.replace(/^(https?:\/\/)?/, "http://");
-	const urlObj = $.NSURL.URLWithString(url);
-	const host = urlObj.host.js;
-	const port = urlObj.port.js;
-	if (url.startsWith(authority)) {
+	const origin = "http://" + config.get("authority");
+	if (url.startsWith(origin)) {
 		const photos = Application("Photos");
-		const query = decodeURIComponent(
-			urlObj.lastPathComponent.js,
-		).replace(/[+.~]/g, " ");
+		const query = url.split("/")[3]?.replace(/[+.~]/g, " ") || "";
 		try {
 			photos.mediaItems.byId(query).spotlight();
 		} catch {

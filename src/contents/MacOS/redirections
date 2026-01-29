@@ -1,0 +1,16 @@
+#!/bin/sh
+
+# This prints redirections configured by the Photos Server
+# `danger` installation script.
+
+# default hostname is guaranteed to to match anything in /etc/hosts
+hostname=$(echo "${1:-\$\$}" | sed -E 's/\./\\./g')
+
+# first print the address, if any, assigned to the given hostname
+/usr/bin/awk "/[[:space:]]$hostname"'$/{printf("\t%s 🠪 %s\n",$2,$1)}' /etc/hosts
+
+# then print any port forwarding rules set up by Photos Server
+# we can't tell if these are actually active without sudoing
+/bin/launchctl print system/ca.heckman.PhotosServer.port-forwarding 2>/dev/null |
+/usr/bin/grep -- 'port 80 ->' |
+/usr/bin/sed -E 's/^.*(127[.0-9]*) port 80 -> 127.0.0.1 port ([0-9]*).*$/\t\1:80 🠪 127.0.0.1:\2/'
