@@ -174,7 +174,7 @@ function primeModal() {
 		list = [choices.start.label];
 		status = launchAgent.isInstalled()
 			? "Server is stopped."
-			: "Server has been removed.";
+			: "Server is not installed.";
 	}
 	status = `${status}
 
