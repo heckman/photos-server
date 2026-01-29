@@ -5,6 +5,8 @@
 > **THIS IS PROJECT IS IN A STATE OF WILD FLUX**<br>
 > Expect breaking changes throughout.
 
+**THIS README IS VERY OLD AND OUT OF DATE**
+
 Serves photos from the [Apple
 Photos](https://apps.apple.com/app/photos/id1584215428) application
 locally on your Mac.
@@ -140,8 +142,6 @@ I used added these:
 ```
 
 The only one that worked was `photos.local` so I removed the other two—it's the only one my system would let me access via http rather than https. Also, safari kept adding `.com` to the the plain `photos`.
-
-
 
 ### Automated installation
 
