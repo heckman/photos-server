@@ -15,7 +15,7 @@ I wanted to embed photos from my Photos library into notes I write in markdown, 
 
 With this application, I select an image in Apple Photos, use a keyboard shortcut to copy a link to it, then paste it in my markdown document. It looks like this:
 
-![](https://github.com/user-attachments/assets/c8e9883a-c7b9-4419-8227-e53a9d0d2b6b)
+![Demo](https://github.com/user-attachments/assets/d4d54ee1-15b2-4621-b701-2c591b1ef237)
 
 Later on, If I right-click on the image in my markdown editor, it gives me the option to "Open Image in Browser...". When I select it, the Photos application opens to a view of the photo.
 
