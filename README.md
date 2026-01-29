@@ -49,22 +49,22 @@ The copier copies links in mardown format, which included ALT text. The copier t
 
 Opening the Photos Server opens the control panel. It provides the following functions:
 
-### Stop the server
+### Start/Restart the server
 
-The server will restart on a system restart. In a near-future version that will probably be more permanent, probably uninstalling the service completely, to be reinstalled when the server is "restarted".
+This provides the opportunity to change the port the server is listening on. When starting the server a file is written to `~/Library/LaunchAgents/` that will restart the server when the system reboots.
 
-### Start/restart the server
+### Remove the server
 
-This is how to change the port on localhost the server will listen on.
+This will stop the server and remove the launch agent from the user's `~/Library`. It will remain uninstalled on reboot.
 
-### Set the authority for photos
+### Set the prefix for URLs to open in Photos
 
-The **_authority_** is the combination of hostname (or ip address) and optional port number (which defaults to 80). This value will be used in two places.
+The prefix should be an **_authority_**: the combination of hostname (or IP address) and optional port number (if not 80, which is implied). This value will be used in two places.
 
-1. When links are copied, they will be in the form http://**_authority_**/**_identifier_**[*/basename*]. (Where the additional _basename_ component is only present when the identifier is a UUID.)
+1. When links are copied, they will be in the form  http://***authority/basename*** or  http://***authority/UUID/basename***.
 2. When Photos Server is the default browser, opening a URL beginning with http://**_authority_**/ will open Apple Photos, with the identified photo selected in the "view" mode.
 
-If you are not using fancy redirection, you'll want this to be localhost:**_port_**, where _port_ is the same as the value set when starting/restarting the server. With [fancy redirection](#fancy-redirection), this doesn't have to be the case. For example, I use port `6330` and `photos.local` as the authority (with an implied port of 80).
+If you are not using fancy redirection, you'll want this to be "localhost:**_port_**", where _port_ is the same as the value set when starting/restarting the server. With [fancy redirection](#fancy-redirection), this doesn't have to be the case. For example, I use port `6330` and `photos.local` as the authority.
 
 ### Set the preferred browser
 
@@ -92,9 +92,9 @@ scripts/osabundle src/photosServer.json
 
 Once built it needs to be moved to the Applications folder to work correctly.
 
-### Uninstallation (Launch agent)
+### Uninstallation cruft
 
-Photos Server will listen for incoming connections by creating a launch agent at `~/Library/LaunchAgents/ca.heckman.path.plist`. This file will not be removed when the Photos Server application is removed. A future version will be tidier, but for now, it will have to be uninstalled manually.
+Photos Server will listen for incoming connections by creating a launch agent at `~/Library/LaunchAgents/ca.heckman.path.plist`. This file can be removed from the control panel, but it will not be automatically removed when the Photos Server application is deleted. Photos Server also creates small file to store its settings at `~/Library/Preferences/ca.heckman.PhotosServer.plist` which will also be left behind. (*An uninstallation script is in the works #TODO.*)
 
 ## Fancy redirection
 

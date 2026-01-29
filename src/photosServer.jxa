@@ -27,7 +27,7 @@ const launchAgent = (() => {
 	const plistDir = `${app.pathTo("home folder")}/Library/LaunchAgents`;
 	const plistPath = `${plistDir}/${label}.plist`;
 	return {
-		disable: () => {
+		stop: function () {
 			try {
 				app.doShellScript(
 					`launchctl bootout gui/${uid}/${label} 2>/dev/null`,
@@ -37,7 +37,11 @@ const launchAgent = (() => {
 				return false;
 			}
 		},
-		enable: () => {
+		remove: function () {
+			this.stop();
+			app.doShellScript(`rm ${plistPath}`);
+		},
+		start: function () {
 			try {
 				app.doShellScript(
 					`launchctl bootstrap gui/${uid} ${plistPath} 2>/dev/null`,
@@ -47,7 +51,15 @@ const launchAgent = (() => {
 				return false;
 			}
 		},
-		isRunning: () => {
+		isInstalled: function () {
+			try {
+				app.doShellScript(`test -e ${plistPath}`);
+				return true;
+			} catch {
+				return false;
+			}
+		},
+		isRunning: function () {
 			try {
 				app.doShellScript(`
 					set -o pipefail
@@ -58,7 +70,7 @@ const launchAgent = (() => {
 				return false;
 			}
 		},
-		getPort: () => {
+		getPort: function () {
 			try {
 				return app.doShellScript(
 					`plutil -extract Sockets.Photos.SockServiceName raw ${plistPath}`,
@@ -91,8 +103,8 @@ const launchAgent = (() => {
 					printf '%s' '${JSON.stringify(plistJson)}' |
 					plutil -convert xml1 -o '${plistPath}' -
 				`);
-				this.disable();
-				this.enable();
+				this.stop();
+				this.start();
 				return true;
 				app.displayAlert("Server updated.");
 			} catch (e) {
@@ -111,67 +123,91 @@ function primeModal() {
 	const browser = config.get("defaultBrowser");
 	const host = config.get("authority");
 	const port = launchAgent.getPort();
-	const isRunning = launchAgent.isRunning();
 	const redirections = app
 		.doShellScript(
 			`/Applications/Photos\\ Server.app/Contents/MacOS/redirections ${host}||:`,
 		)
 		.trim();
-	const redirectionListItems = redirections
-		? ["Display configured redirections"]
-		: [];
-	const status = isRunning
-		? port
-			? "Serving photos on 127.0.0.1:" + port
-			: "Something is wrong with the port setting."
-		: "Server is stopped.";
-	const settings = `Links beginning with "http://${host}"
+	const choices = {
+		restart: { label: "Restart the server", action: portModal },
+		remove: {
+			label: "Remove the server",
+			action: () => {
+				launchAgent.remove();
+				pause("Removing server");
+				return true;
+			},
+		},
+		start: { label: "Start the server", action: portModal },
+		authority: {
+			label: "Set URL prefix that will open in Photos",
+			action: authorityModal,
+		},
+		browser: {
+			label: "Set browser for everything else",
+			action: browserModal,
+		},
+		redirections: {
+			label: "Display configured redirections",
+			action: () => redirectionsModal(redirections),
+		},
+		homepage: {
+			label: "Visit Photos Server homepage and close",
+			action: () => {
+				app.displayAlert("Opening homepage...", {
+					givingUpAfter: 1,
+				});
+				app.doShellScript(
+					`open -a "${browser}" https://github.com/heckman/photos-server`,
+				);
+				return false;
+			},
+		},
+	};
+
+	let list = [];
+	let status = "";
+	if (launchAgent.isRunning()) {
+		list = [choices.restart.label, choices.remove.label];
+		status = "Serving photos on 127.0.0.1:" + port;
+	} else {
+		list = [choices.start.label];
+		status = launchAgent.isInstalled()
+			? "Server is stopped."
+			: "Server has been removed.";
+	}
+	status = `${status}
+
+
+Links beginning with "http://${host}"
 will open in Photos.
 
 Everything else will open in ${browser}.`;
-	const list = [
-		`${isRunning ? "Restart" : "Start"} server`,
-		"Stop server",
-		"Set hostname that will open in Photos",
-		"Set browser for everything else",
-		...redirectionListItems,
-		"Visit Photos Server homepage and close",
-	];
 
-	const action = app.chooseFromList(list, {
+	list = [...list, choices.authority.label, choices.browser.label];
+
+	if (redirections) list = [...list, choices.redirections.label];
+
+	list = [...list, choices.homepage.label];
+
+	const choice = app.chooseFromList(list, {
 		withTitle: "Photos Server Control",
-		withPrompt: status + "\n\n" + settings + "\n\n",
+		withPrompt: status,
 		defaultItems: [],
 		okButtonName: "Select",
 		cancelButtonName: "Done",
 		multipleSelectionsAllowed: false,
 		emptySelectionAllowed: false,
 	});
-	if (action !== false)
-		if (action[0].includes("top")) {
-			launchAgent.disable();
-			pause("Stopping server");
-			primeModal();
-		} else if (action[0].includes("tart")) {
-			portModal();
-			primeModal();
-		} else if (action[0].includes("host")) {
-			authorityModal();
-			primeModal();
-		} else if (action[0].includes("browser")) {
-			browserModal();
-			primeModal();
-		} else if (action[0].includes("direct")) {
-			redirectionsModal(redirections);
-			primeModal();
-		} else if (action[0].includes("homepage")) {
-			app.displayAlert("Opening homepage...", {
-				givingUpAfter: 1,
-			});
-			// Application(browser).activate();
-			app.doShellScript(`open -a ${browser} ${HOMEPAGE}`);
-		}
+	if (choice === false) return;
+	if (
+		Object.values(choices)
+			.find((c) => c.label === choice[0])
+			.action()
+	)
+		primeModal();
 }
+
 function redirectionsModal(redirections) {
 	app.displayAlert(
 		redirections
@@ -182,18 +218,19 @@ function redirectionsModal(redirections) {
 			message: redirections,
 		},
 	);
+	return true;
 }
 function authorityModal() {
 	try {
 		const authority = app.displayDialog(
-			"Links to this host will be opened in Photos",
+			"URLs with this host (and optional port) will be opened in Photos",
 			{
 				defaultAnswer: config.get("authority"),
 				hiddenAnswer: false,
 				buttons: ["Cancel", "OK"],
 				defaultButton: "OK",
 				cancelButton: "Cancel",
-				withTitle: "Set Hostname",
+				withTitle: "Set Authority",
 			},
 		);
 		config.set(
@@ -203,6 +240,7 @@ function authorityModal() {
 	} catch {
 		// ignore error
 	}
+	return true;
 }
 
 function browserList() {
@@ -234,6 +272,7 @@ function browserModal() {
 	if (browser !== false) {
 		config.set("defaultBrowser", String(browser[0]));
 	}
+	return true;
 }
 function validPort(port) {
 	try {
@@ -251,7 +290,7 @@ function validPort(port) {
 function portModal(errorMessage = "Select the port") {
 	try {
 		const port = app.displayDialog(errorMessage, {
-			defaultAnswer: launchAgent.getPort(),
+			defaultAnswer: config.get("portString"),
 			hiddenAnswer: false,
 			buttons: ["Cancel", "OK"],
 			defaultButton: "OK",
@@ -262,6 +301,7 @@ function portModal(errorMessage = "Select the port") {
 		});
 		if (port.buttonReturned === "OK") {
 			if (validPort(port.textReturned)) {
+				config.set("portString", port.textReturned);
 				launchAgent.save(port.textReturned);
 				pause("Starting server");
 			} else {
@@ -271,6 +311,7 @@ function portModal(errorMessage = "Select the port") {
 	} catch {
 		//
 	}
+	return true;
 }
 function run() {
 	primeModal();
