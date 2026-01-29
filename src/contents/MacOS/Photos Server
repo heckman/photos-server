@@ -129,9 +129,9 @@ die(){
 	# all canned responses are svg images
 	local content_type="svg+xml"
 
-	notice "Serving $1: $filename"
+	notice "Serving $code: $filename"
 
-	echo -n "HTTP/1.1 $1 $description
+	echo -n "HTTP/1.1 $code $description
 Content-Type: $content_type
 Content-Length: $length
 Content-Disposition: inline; filename=$filename
