@@ -1,205 +1,173 @@
-#!/opt/homebrew/bin/bash
-# Copyright (c) 2024 Erik Ben Heckman, shared under the GPL-3.0 license
-# except where otherwise noted
-# <https://github.com/heckman/photos-server>
-#
-#
-#  photos-http-handler
-#
-#
-# Serves photos from Apple Photos.
+#!/usr/bin/osascript -l JavaScript
 
-# Responds to http requests from stdin, where the root of the url
-# path is either the UUID of a media item in Apple Photos or a
-# search query.
-#
-# If a matching media item is found, it prints, to stdout, a HTTP
-# response with the media item as inline content. If multiple
-# matching media items are found, an arbitrary one is chosen.
-#
-# IF no item is found, or Apple Photos times out during the request,
-# then a 404 HTTP response is printed with a placeholder image.
-#
-# If something unexpected occurs, a 500 HTTP resonse is printed
-# with a placeholder image.
+ObjC.import("Foundation");
 
-## This file is named `Photos Server` so that's how it will appear
-## in the notification center's warning about background tasks.
+const FILE_MANAGER = $.NSFileManager.defaultManager;
+const TEMP_DIR_TEMPLATE = "ca.heckman.PhotoServer.exported-media-item.";
+const CURRENT_APPLICATION = Application.currentApplication();
+CURRENT_APPLICATION.includeStandardAdditions = true;
 
-set -e
+const logError = (error) => console.log(error);
+const debug = (message) => null; //console.log(message);
 
-
-# dependencies can be installed via homebrew:
-#   brew bash install jq coreutils
-#
-# when this handleris run the ath is /usr/bin:/bin:/usr/sbin:/sbin
-# so we need to locate out dependencies
-TIMEOUT=/opt/homebrew/bin/timeout
-JQ=/opt/homebrew/bin/jq
-# the location of bash also needs to be specified in the shebang
-# bash needs to support associative arrays, which is in bash 4.0
-
-LOGGER_TAG=ca.heckman.PhotoServer
-TEMP_TEMPLATE=ca.heckman.PhotoServer.exported-media-item
-TIMEOUT_SECONDS=150  # time given to Photos to respond to request
-
-
-main(){
-	local method path protocol
-	# shellcheck disable=SC2034  # not using method or protocol
-	read -r method path protocol
-
-	notice "Request path: $path"
-
-	local -a url_components
-	while read -r part
-	do
-		part="${part//[+.~]/ }"
-		url_components+=("$(printf '%b' "${part//%/\\x}")")
-	done < <(tr / $'\n' <<< "$path")
-
-	local query="${url_components[1]}"
-	local basename="${url_components[-1]}"
-
-	info "Query: $query"
-	info "Basename: $basename"
-
-	local tmpdir
-	tmpdir="$(mktemp -d -t $TEMP_TEMPLATE)" || die ERR_TEMP
-	# shellcheck disable=SC2064  # we want to expand tmpdir now
-	trap "rm -rf '$tmpdir'" EXIT
-
-	local result
-	result="$(export_media_item_from_photos "$query" "$tmpdir")" || {
-		case $? in
-		124) die ERR_TIMEOUT;;
-		1) die ERR_JXA ;;
-		*) die $?;;
-		esac
-	}
-
-	info "Result: ${result}"
-	[[ -n "$result" ]] || die NOT_FOUND
-
-	local filename filesize filetype extension
-	filename="$(any_file_in "$tmpdir")" || die ERR_EXPORT
-	filesize="$(stat -f'%z' "$filename")"
-	filetype="$(file -b --mime-type "$filename")"
-	extension="${filename##*.}"
-
-	notice "Serving 200 OK: $basename.$extension"
-
-	echo "HTTP/1.1 200 OK
-Content-Type: $filetype
-Content-Length: $filesize
-Content-Disposition: inline; filename=$basename.$extension
-"; cat "$filename";
-
-	exit 0
-}
-
-
-die(){
-	local -A errors=(
-		[NOT_FOUND]="warning 404 No matching media item found."
-		[ERR_TEMP]="crit 500 Failed to create temporary directory."
-		[ERR_JXA]="crit 500 Failed to run jxa."
-		[ERR_EXPORT]="crit 500 Failed to find exported file."
-		[ERR_TIMEOUT]="err 504 Request to Photos timed out."
-	)
-	local error="${errors[$1]:-crit 500 Unknown error: $1}"
-	read -r level code message <<< "$error"
-	log "$level" "$message"
-
-
-	local description filename
-	case "$code" in
-	404)
-		description="Not Found"
-		filename="missing.svg";;
-	500)
-		description="Internal Server Error"
-		filename="error.svg";;
-	504)
-		description="504 Gateway Timeout"
-		filename="timeout.svg";;
-	esac
-	local content="${canned_responses[$filename]}"
-	local length="${#content}"
-	# all canned responses are svg images
-	local content_type="svg+xml"
-
-	notice "Serving $code: $filename"
-
-	echo -n "HTTP/1.1 $code $description
-Content-Type: $content_type
-Content-Length: $length
-Content-Disposition: inline; filename=$filename
-
-$content";
-	exit $((code>=500))
-}
-
-any_file_in(){
-	find "$1" -maxdepth 1 -type f ! -name '.*' 2>/dev/null | grep -F ''
-}
-
-
-# write to system logger
-#
-# level is sone of: info notice warning err crit
-#   debug -- dumped scripts
-#   info -- intermediate values
-#   notice -- requests & responses
-#   warning -- resource not found
-#   err -- timeout fetching data
-#   crit -- things that should never happen
-log(){ local level="$1" message="$2"
-	logger -t "$LOGGER_TAG" -p "user.$level" "$message"
-}
-debug(){ log debug "$1"; }
-info(){ log info "$1"; }
-notice(){ log notice "$1"; }
-# warning(){ log warning "$1"; }
-# err(){ log err "$1"; }
-# crit(){ log crit "$1"; }
-
-export_media_item_from_photos(){ local query="$1" tmpdir="$2"
-	local jxa
-	jxa="$(cat <<EOF
-(
-	(args)=>{
-		app=Application("Photos");
-		exportItem=(item)=>{
-			app.export(
-				[item], {
-					to:Path(args[1]),
-					usingOriginals: false
-				}
-			)
+function run(args) {
+	const tempDir = createTemporaryDirectory(TEMP_DIR_TEMPLATE);
+	if (tempDir) {
+		try {
+			handle_http_request(slurpStdin(), tempDir);
+		} catch (error) {
+			logError(error);
+			reply500();
+		} finally {
+			deleteDirectory(tempDir);
 		}
-		try{
-			exportItem(app.mediaItems.byId(args[0]))
-			return true
+	} else {
+		logError("failed to create temporary directory");
+		reply500();
+	}
+}
+
+function handle_http_request(stdin, tempDir) {
+	debug("stdin: " + stdin);
+	debug("tempDir: " + tempDir);
+
+	const urlComponents = stdin.split("\n").at(0).split("/").slice(1);
+	const identifier = urlComponents.at(0).replace(/[+.~]/g, " ");
+	const basename = urlComponents.at(-1) || urlComponents.at(-2);
+	debug("identifier: " + identifier);
+	debug("basename: " + basename);
+
+	if (!exportMediaItemFromPhotos(identifier, tempDir))
+		return reply404();
+	const exportedFilename = directoryContents(tempDir)?.at(0);
+
+	if (!exportedFilename)
+		throw new Error("Failed to find exported file");
+
+	const filename =
+		basename + "." + exportedFilename.split(".").at(-1);
+	const filepath = tempDir + "/" + exportedFilename;
+	return reply(
+		[
+			"HTTP/1.1 200 OK",
+			`Content-Type: ${mimeType(filepath)}`,
+			`Content-Length: ${fileSize(filepath)}`,
+			`Content-Disposition: inline; filename=${filename}`,
+		],
+		"",
+		filepath,
+	);
+}
+
+function exportMediaItemFromPhotos(identifier, tempDir) {
+	const photos = Application("Photos");
+	const exportItem = (item) => {
+		photos.export([item], {
+			to: Path(tempDir),
+			usingOriginals: false,
+		});
+	};
+	try {
+		debug("UUID: " + identifier);
+		exportItem(photos.mediaItems.byId(identifier));
+		return true;
+	} catch {
+		try {
+			debug("query: " + identifier);
+			exportItem(photos.search({ for: identifier })[0]);
+			return true;
 		} catch {
-			try {
-				exportItem(app.search({for:args[0]})[0])
-				return true
-			} catch {
-				return
-			}
+			return false;
 		}
 	}
-)( $("$JQ" -Rn '[inputs]' <<<"$query
-$tmpdir") )
-EOF
-)"
-	debug "$jxa"
-	"$TIMEOUT" "$TIMEOUT_SECONDS" /usr/bin/osascript -l JavaScript -e "$jxa"
 }
 
-declare -A canned_responses=(
-	["missing.svg"]='<?xml version="1.0" encoding="UTF-8"?>
+slurpStdin = () =>
+	$.NSString.alloc.initWithDataEncoding(
+		$.NSFileHandle.fileHandleWithStandardInput.readDataToEndOfFile,
+		$.NSUTF8StringEncoding,
+	).js;
+
+const createDirectory = (path) =>
+	FILE_MANAGER.createDirectoryAtPathWithIntermediateDirectoriesAttributesError(
+		path,
+		true,
+		$.nil,
+		$.nil,
+	)
+		? path
+		: null;
+
+// returning boolean version
+const deleteDirectory = (directory) =>
+	FILE_MANAGER.removeItemAtPathError(directory, $.nil);
+
+const createTemporaryDirectory = (template = "") =>
+	createDirectory(
+		$.NSTemporaryDirectory().js +
+			template +
+			$.NSUUID.UUID.UUIDString.js,
+	);
+
+const directoryContents = (directory) =>
+	((files) =>
+		files && !files.isNil() ? ObjC.deepUnwrap(files) : null)(
+		FILE_MANAGER.contentsOfDirectoryAtPathError(directory, $.nil),
+	);
+
+const mimeType = (filePath) =>
+	CURRENT_APPLICATION.doShellScript(
+		`file -b --mime-type '${filePath.replace(/\'/g, "'\\''")}' | grep -v '^cannot'`,
+	) || null;
+
+const fileSize = (filePath) =>
+	((attributes) =>
+		!attributes.isNil()
+			? attributes.objectForKey($.NSFileSize).js
+			: null)(
+		FILE_MANAGER.attributesOfItemAtPathError(filePath, $.nil),
+	);
+
+function reply(headers, text, filePath = null) {
+	const stringContent = headers.join("\r\n") + "\r\n\r\n" + text;
+	const stdOut = $.NSFileHandle.fileHandleWithStandardOutput;
+	stdOut.writeData(
+		$.NSString.alloc
+			.initWithString(String(stringContent))
+			.dataUsingEncoding($.NSUTF8StringEncoding),
+	);
+	if (filePath)
+		stdOut.writeData($.NSData.dataWithContentsOfFile(filePath));
+	// stdOut.closeFile();
+}
+
+const reply200 = (filepath, filename) =>
+	reply(
+		[
+			"HTTP/1.1 200 OK",
+			`Content-Type: ${fileType(filepath)}`,
+			`Content-Length: ${fileSize(filepath)}`,
+			`Content-Disposition: inline; filename=${filename || filepath.split("/").at(-1)}`,
+		],
+		"",
+		filepath,
+	);
+
+const replySvg = (responseCode, svg) => {
+	reply(
+		[
+			"HTTP/1.1 " + responseCode,
+			"Content-Type: image/svg+xml",
+			"Content-Length: " + svg.length,
+		],
+		svg,
+	);
+};
+
+const reply404 = () =>
+	replySvg(
+		"404 Not Found",
+		`<?xml version="1.0" encoding="UTF-8"?>
 <!-- old school pixellated netscape broken image icon -->
 <!--
   icon created for Netscape Navigator by Marsh Chamberlin (https://dataglyph.com)
@@ -235,9 +203,12 @@ declare -A canned_responses=(
     <path d="M3,9 l1,0 l0,1 l1,0 l0,1 l1,0 l0,1 l-3,0 Z" fill="#f73ae1"></path>
     <path d="M3,12 l3,0 l0,1 l-3,0 Z" fill="black"></path>
   </g>
-</svg>
-'
-	["error.svg"]='<?xml version="1.0" encoding="UTF-8"?>
+</svg>`,
+	);
+const reply500 = () =>
+	replySvg(
+		"500 Internal Server Error",
+		`<?xml version="1.0" encoding="UTF-8"?>
 <!--
 The "Sad Mac" icon was created for Apple Inc. by Susan Kare https://kareprints.com
 The SVG was hand-coded Erik Ben Heckman https://erik.heckman.ca
@@ -255,9 +226,12 @@ and can be found embedded in the code for https://github.com/heckman/photos-serv
     M16,16 h5 v2 h3 v1 h-1 v-2 h-8 v 1 h 1 Z
     M9,26 h2 v1 h-2 Z
     M21,25 h6 v1 h-6 Z"></path>
-</svg>
-'
-["timeout.svg"]='<?xml version="1.0" encoding="UTF-8"?>
+</svg>`,
+	);
+const reply504 = () =>
+	replySvg(
+		"504 Gateway Timeout",
+		`<?xml version="1.0" encoding="UTF-8"?>
 <!--
 The "Watch" cursor was created for Apple Inc. by Susan Kare https://kareprints.com
 The SVG was hand-coded Erik Ben Heckman https://erik.heckman.ca who added the exclaimation
@@ -276,9 +250,5 @@ point and can be found embedded in the code for https://github.com/heckman/photo
   <path id="bang" fill-rule=" evenodd" fill="#eb161e" d="
     M 18 1 v16 h 3 v -4 h -3 v 1 h 3 v -13 Z
   "></path>"
-</svg>'
-)
-
-main "$@"
-
-
+</svg>`,
+	);

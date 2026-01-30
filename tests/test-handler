@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 
+url_path="${1:-/738BDDC0-2A9A-4CEE-9E39-2F5316D88147}"
+# url_path="${1:-/2025-11-13.8804}"
+
 ROOT="$(git rev-parse --show-toplevel)"
 HANDLER="$ROOT/src/contents/MacOS/Photos Server"
 
-"$HANDLER" <<<"GET /${1#/}" | head -n 6
+
+"$HANDLER" <<<"GET /${url_path#/}" | head -n 1
