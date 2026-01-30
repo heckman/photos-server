@@ -8,9 +8,13 @@ const CURRENT_APPLICATION = Application.currentApplication();
 CURRENT_APPLICATION.includeStandardAdditions = true;
 
 const logError = (error) => console.log(error);
-const debug = (message) => null; //console.log(message);
+const debug = (message) =>
+	console.log(new Date().toLocaleString(), message, "\n");
 
 function run(args) {
+	// slurpStdin();
+	// reply();
+
 	const tempDir = createTemporaryDirectory(TEMP_DIR_TEMPLATE);
 	if (tempDir) {
 		try {
@@ -31,11 +35,21 @@ function handle_http_request(stdin, tempDir) {
 	debug("stdin: " + stdin);
 	debug("tempDir: " + tempDir);
 
-	const urlComponents = stdin.split("\n").at(0).split("/").slice(1);
-	const identifier = urlComponents.at(0).replace(/[+.~]/g, " ");
-	const basename = urlComponents.at(-1) || urlComponents.at(-2);
+	const urlComponents = stdin
+		.split("\n")
+		?.at(0)
+		?.split(" ")
+		?.at(1)
+		?.split("/")
+		?.slice(1);
+	const identifier =
+		urlComponents?.at(0)?.replace(/[+.~]/g, " ") || "";
+	const basename =
+		urlComponents?.at(-1) || urlComponents?.at(-2) || "";
 	debug("identifier: " + identifier);
 	debug("basename: " + basename);
+
+	if (!identifier) return reply404();
 
 	if (!exportMediaItemFromPhotos(identifier, tempDir))
 		return reply404();
@@ -43,6 +57,8 @@ function handle_http_request(stdin, tempDir) {
 
 	if (!exportedFilename)
 		throw new Error("Failed to find exported file");
+
+	debug("exportedFilename: " + exportedFilename);
 
 	const filename =
 		basename + "." + exportedFilename.split(".").at(-1);
