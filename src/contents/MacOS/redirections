@@ -13,4 +13,4 @@ hostname=$(echo "${1:-\$\$}" | sed -E 's/\./\\./g')
 # we can't tell if these are actually active without sudoing
 /bin/launchctl print system/ca.heckman.PhotosServer.port-forwarding 2>/dev/null |
 /usr/bin/grep -- 'port 80 ->' |
-/usr/bin/sed -E 's/^.*(127[.0-9]*) port 80 -> 127.0.0.1 port ([0-9]*).*$/\t\1:80 🠪 127.0.0.1:\2/'
+/usr/bin/sed -E 's/^.*(127[.0-9]*) port 80 -> 127.0.0.1 port ([0-9]*).* ([a-f0-9:]*) port 80 -> ::1 port ([0-9]*).*$/ \1:80 🠪 127.0.0.1:\2\n\3:80 🠪       ::1:\4/'

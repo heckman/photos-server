@@ -33,7 +33,8 @@ port=6330
 # which will likely be used by a web server.
 # it can be set to anything else starting with `127.`
 # it is unlikely this will need to be changed.
-address=127.6.3.3
+ip4address=127.6.3.3
+ip6address=fd00::6630
 
 set -eu
 
@@ -89,7 +90,7 @@ subcommands:
 	        otherwise exits with 1.
 	        other commands exit 0 on success, 1 on failure
 	status  print the host address for $hostname
-	add     add $hostname to /etc/hosts as $address
+	add     add $hostname to /etc/hosts as $ip4address and $ip6address
 	remove  remove $hostname from /etc/hosts
 
 "
@@ -109,22 +110,33 @@ host_main(){
 	esac
 }
 
-print_host_address(){
+print_ip4_host_address(){
 	grep "[[:space:]]${hostname}\$" /etc/hosts
 }
-is_in_hosts(){
-	grep -q "[[:space:]]${hostname}\$" /etc/hosts
-}
+
 add_hostname(){
-	! is_in_hosts || ok "$hostname is already in /etc/hosts"
-	# shellcheck disable=SC2015  # ok exits, so A && B || C is fine
-	printf '%-16s%s' "$address" "$hostname" |
-	sudo tee -a /etc/hosts >/dev/null &&
-	ok "$hostname has been added to /etc/hosts as $address" ||
-		die "failed to add $hostname to /etc/hosts"
+	if grep -qi "^[0-9].*[[:space:]]${hostname}\$" /etc/hosts
+	then
+		echo "$hostname is already in /etc/hosts as $ip4address"
+	else
+		printf '%-16s%s\n' "$ip4address" "$hostname" |
+		sudo tee -a /etc/hosts >/dev/null ||
+		die "failed to add $hostname to /etc/hosts as $ip4address"
+		echo "added $hostname to /etc/hosts as $ip4address"
+	fi
+	if grep -qi "^[a-f].*[[:space:]]${hostname}\$" /etc/hosts
+	then
+		echo "$hostname is already in /etc/hosts as $ip6address"
+	else
+		printf '%-16s%s\n' "$ip6address" "$hostname" |
+		sudo tee -a /etc/hosts >/dev/null ||
+		die "failed to add $hostname to /etc/hosts as $ip6address"
+		echo "added $hostname to /etc/hosts as $ip6address"
+	fi
+
 }
 remove_hostname(){
-	is_in_hosts || ok "$hostname is not in /etc/hosts"
+	grep -qi "[[:space:]]${hostname}\$" /etc/hosts || ok "$hostname is not in /etc/hosts"
 	# shellcheck disable=SC2015  # ok exits, so A && B || C is fine
 	hosts=$(cat /etc/hosts) &&
 	printf '%s' "$hosts" |
@@ -237,7 +249,7 @@ print_plist(){
         <array>
             <string>/bin/sh</string>
             <string>-c</string>
-            <string>/bin/echo "rdr pass on lo0 inet proto tcp from any to ${address} port 80 -> 127.0.0.1 port ${port}" | /sbin/pfctl -a ${pf_anchor} -f -</string>
+            <string>/usr/bin/printf "rdr pass on lo0 inet proto tcp from any to %s port 80 -> 127.0.0.1 port %s\nrdr pass on lo0 inet6 proto tcp from any to %s port 80 -> ::1 port %s\n" "${ip4address}" "${port}" "${ip6address}" "${port}" | /sbin/pfctl -a ${pf_anchor} -f -</string>
         </array>
         <key>RunAtLoad</key>
         <true/>
