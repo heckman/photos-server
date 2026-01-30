@@ -83,7 +83,7 @@ const launchAgent = (() => {
 			const plistJson = {
 				Label: label,
 				Program: HANDLER,
-				RunAtLoad: true,
+				RunAtLoad: false,
 				Sockets: {
 					Photos: {
 						SockNodeName: "localhost",
@@ -94,7 +94,6 @@ const launchAgent = (() => {
 				inetdCompatibility: {
 					Wait: false,
 				},
-				RunAtLoad: true,
 			};
 			try {
 				app.doShellScript(`
