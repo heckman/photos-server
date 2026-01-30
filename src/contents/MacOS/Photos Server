@@ -100,7 +100,7 @@ function exportMediaItemFromPhotos(identifier, tempDir) {
 
 slurpStdin = () =>
 	$.NSString.alloc.initWithDataEncoding(
-		$.NSFileHandle.fileHandleWithStandardInput.readDataToEndOfFile,
+		$.NSFileHandle.fileHandleWithStandardInput.availableData,
 		$.NSUTF8StringEncoding,
 	).js;
 
@@ -154,7 +154,6 @@ function reply(headers, text, filePath = null) {
 	);
 	if (filePath)
 		stdOut.writeData($.NSData.dataWithContentsOfFile(filePath));
-	// stdOut.closeFile();
 }
 
 const reply200 = (filepath, filename) =>
@@ -169,7 +168,7 @@ const reply200 = (filepath, filename) =>
 		filepath,
 	);
 
-const replySvg = (responseCode, svg) => {
+const replySvg = (responseCode, svg) =>
 	reply(
 		[
 			"HTTP/1.1 " + responseCode,
@@ -178,7 +177,6 @@ const replySvg = (responseCode, svg) => {
 		],
 		svg,
 	);
-};
 
 const reply404 = () =>
 	replySvg(
