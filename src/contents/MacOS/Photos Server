@@ -2,14 +2,38 @@
 
 ObjC.import("Foundation");
 
+const BUNDLE_ID = "ca.heckman.PhotosServer";
+
 const FILE_MANAGER = $.NSFileManager.defaultManager;
-const TEMP_DIR_TEMPLATE = "ca.heckman.PhotoServer.exported-media-item.";
+const TEMP_DIR_TEMPLATE = BUNDLE_ID + ".exported-media-item.";
 const CURRENT_APPLICATION = Application.currentApplication();
 CURRENT_APPLICATION.includeStandardAdditions = true;
 
-const logError = (error) => console.log(error);
-const debug = (message) =>
-	console.log(new Date().toLocaleString(), message, "\n");
+const logError = (error) => log(message, "ERROR");
+const debug = (message) => log(message, "DEBUG");
+
+timestamp = () =>
+	new Intl.DateTimeFormat("fr-CA", {
+		year: "numeric",
+		month: "2-digit",
+		day: "2-digit",
+		hour: "2-digit",
+		minute: "2-digit",
+		second: "2-digit",
+		timeZoneName: "longOffset",
+	})
+		.format(new Date())
+		.replace(/\s(UTC|GMT)/u, "")
+		.replace(/\s/, "T");
+
+const log = (message, level = "INFO") =>
+	((text) => {
+		$.NSFileHandle.fileHandleWithStandardError.writeData(
+			$.NSString.alloc
+				.initWithString(text + "\n")
+				.dataUsingEncoding($.NSUTF8StringEncoding),
+		);
+	})(`${timestamp()} [${level}] ${message}`);
 
 function run(args) {
 	// slurpStdin();

@@ -24,6 +24,8 @@ const launchAgent = (() => {
 	const bid = $.NSBundle.mainBundle.bundleIdentifier.js;
 	const uid = $.getuid();
 	const label = bid + ".listener";
+	const logDir = `${app.pathTo("home folder")}/Library/Logs/${bid}`;
+	const errLogPath = `${logDir}/http-handler-error.log`;
 	const plistDir = `${app.pathTo("home folder")}/Library/LaunchAgents`;
 	const plistPath = `${plistDir}/${label}.plist`;
 	return {
@@ -94,6 +96,7 @@ const launchAgent = (() => {
 				inetdCompatibility: {
 					Wait: false,
 				},
+				StandardErrorPath: errLogPath,
 			};
 			try {
 				app.doShellScript(`
