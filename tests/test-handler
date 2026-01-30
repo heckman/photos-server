@@ -7,4 +7,4 @@ ROOT="$(git rev-parse --show-toplevel)"
 HANDLER="$ROOT/src/contents/MacOS/Photos Server"
 
 
-"$HANDLER" <<<"GET /${url_path#/}" | head -n 1
+"$HANDLER" <<<"GET /${url_path#/} HTTP/1.1" | head -n 10
