@@ -9,6 +9,8 @@ const TEMP_DIR_TEMPLATE = BUNDLE_ID + ".exported-media-item.";
 const CURRENT_APPLICATION = Application.currentApplication();
 CURRENT_APPLICATION.includeStandardAdditions = true;
 
+const PHOTOS = Application("Photos");
+
 const logError = (error) => log(message, "ERROR");
 const debug = (message) => log(message, "DEBUG");
 
@@ -56,18 +58,12 @@ function run(args) {
 }
 
 function handle_http_request(stdin, tempDir) {
-	debug("stdin: " + stdin);
-	debug("tempDir: " + tempDir);
-
-	const urlComponents = stdin
-		.split("\n")
-		?.at(0)
-		?.split(" ")
-		?.at(1)
-		?.split("/")
-		?.slice(1);
-	const identifier =
-		urlComponents?.at(0)?.replace(/[+.~]/g, " ") || "";
+	// debug("stdin: " + stdin);
+	const request = stdin.split("\n").at(0) || "";
+	debug("request: " + request);
+	const url = request?.split(" ")?.at(1); // second word
+	const urlComponents = url?.split("/")?.slice(1); // drop the initial /;
+	const identifier = urlComponents?.at(0) || "";
 	const basename =
 		urlComponents?.at(-1) || urlComponents?.at(-2) || "";
 	debug("identifier: " + identifier);
@@ -98,28 +94,31 @@ function handle_http_request(stdin, tempDir) {
 		filepath,
 	);
 }
+const decodeQuery = (query) => query?.replace(/[+.~]/g, " ");
 
-function exportMediaItemFromPhotos(identifier, tempDir) {
-	const photos = Application("Photos");
-	const exportItem = (item) => {
-		photos.export([item], {
-			to: Path(tempDir),
-			usingOriginals: false,
-		});
-	};
+function callWithMediaItemByIdentifier(identifier, callback) {
 	try {
 		debug("UUID: " + identifier);
-		exportItem(photos.mediaItems.byId(identifier));
+		callback(PHOTOS.mediaItems.byId(identifier));
 		return true;
 	} catch {
 		try {
-			debug("query: " + identifier);
-			exportItem(photos.search({ for: identifier })[0]);
+			const query = decodeQuery(identifier);
+			debug("query: " + query);
+			callback(PHOTOS.search({ for: query })[0]);
 			return true;
 		} catch {
 			return false;
 		}
 	}
+}
+function exportMediaItemFromPhotos(identifier, tempDir) {
+	return callWithMediaItemByIdentifier(identifier, (item) => {
+		PHOTOS.export([item], {
+			to: Path(tempDir),
+			usingOriginals: false,
+		});
+	});
 }
 
 slurpStdin = () =>
