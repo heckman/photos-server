@@ -10,8 +10,6 @@ When I give up on using libraries, I'll try this again.
 
 ```javascript
 function controlPanel() {
-	primeModal();
-
 	const app = $.NSApplication.sharedApplication;
 
 	// 1. Force the app to stay alive and show its face
@@ -34,7 +32,7 @@ function controlPanel() {
 }
 
 function primeModal() {
-	// $.NSApp.activateIgnoringOtherApps(true);
+	$.NSApp.activateIgnoringOtherApps(true);
 	// ...
 }
 
@@ -45,3 +43,6 @@ function handleLinkEvent(event) {
 	Handler.openUrl(urlString);
 }
 ```
+
+I tried adding this to the working code from the main branch,
+but the dialog box does not appear.
