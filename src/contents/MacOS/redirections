@@ -1,16 +1,33 @@
 #!/bin/sh
 
-# This prints redirections configured by the Photos Server
-# `danger` installation script.
+# This prints redirections configured by the Photos Server daemon:
+daemon=ca.heckman.PhotosServer.port-forwarding
 
-# default hostname is guaranteed to to match anything in /etc/hosts
-hostname=$(echo "${1:-\$\$}" | sed -E 's/\./\\./g')
+# If provided a hostname as an argument, it will be looked up in /etc/hosts
+# and used to substitute matching ip addresses.
 
-# first print the address, if any, assigned to the given hostname
-/usr/bin/awk "/[[:space:]]$hostname"'$/{printf("\t%s 🠪 %s\n",$2,$1)}' /etc/hosts
 
-# then print any port forwarding rules set up by Photos Server
-# we can't tell if these are actually active without sudoing
-/bin/launchctl print system/ca.heckman.PhotosServer.port-forwarding 2>/dev/null |
-/usr/bin/grep -- 'port 80 ->' |
-/usr/bin/sed -E 's/^.*(127[.0-9]*) port 80 -> 127.0.0.1 port ([0-9]*).* ([a-f0-9:]*) port 80 -> ::1 port ([0-9]*).*$/ \1:80 🠪 127.0.0.1:\2\n\3:80 🠪       ::1:\4/'
+# default for $1 is '$$' so it won't match anything in /etc/hosts
+# eacg . character is escaped for use in a regular expression (not $ though)
+hostregex=$(
+	/bin/echo "[[:space:]]${1:-\$\$}\$" | /usr/bin/sed -E 's/\./\\./g'
+)
+
+# sed commands to replace ip addresses with hostname defined in /etc/hosts
+subs="$(
+	/usr/bin/awk "/${hostregex}/"'{printf("s/%s/%s/;",$1,$2)}' /etc/hosts
+)"
+
+# add sed commands to replace localhost ip addresses with 'localhost'
+subs="${subs}s/127.0.0.1:/localhost:/;s/::1:/localhost:/;"
+
+
+# extract the hosts and ports from the forwarding rule
+# defined in the launchdaemon, then apply sub substitutions
+#
+# shellcheck disable=SC2046  # subshell output splits on whitespace
+/usr/bin/printf "IP4:%s🠪%s\nIP6:%s🠪%s\n" $(
+	/bin/launchctl print "system/$daemon" |
+	/usr/bin/grep -- '->' |
+	/usr/bin/sed -E 's/^.* ([0-9.]+) port ([0-9]+) -> ([0-9.]+) port ([0-9]+)\\.* ([a-fA-F0-9:]+) port ([0-9]+) -> ([a-fA-F0-9:]+) port ([0-9]+)\\.*$/\1:\2 \3:\4 \5:\6 \7:\8/;'"${subs}"
+)
