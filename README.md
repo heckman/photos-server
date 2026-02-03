@@ -94,7 +94,9 @@ Once built it needs to be moved to the Applications folder to work correctly.
 
 ### Uninstallation cruft
 
-Photos Server will listen for incoming connections by creating a launch agent at `~/Library/LaunchAgents/ca.heckman.path.plist`. This file can be removed from the control panel, but it will not be automatically removed when the Photos Server application is deleted. Photos Server also creates small file to store its settings at `~/Library/Preferences/ca.heckman.PhotosServer.plist` which will also be left behind. (*An uninstallation script is in the works #TODO.*)
+Photos Server will listen for incoming connections by creating a launch agent at `~/Library/LaunchAgents/ca.heckman.path.plist`. This file can be removed from the control panel, but it will not be automatically removed when the Photos Server application is deleted. Photos Server also creates small file to store its settings at `~/Library/Preferences/ca.heckman.PhotosServer.plist` which will also be left behind.
+
+Currently, there is also a log at `~/Library/Logs/ca.heckman.PhotosServer/http-handler-error.log` that never (ever) gets cleaned up. I'm in the process of changing the logging to use the system log, but in the mean time this file could get quite large.
 
 ## Fancy redirection
 
@@ -109,7 +111,7 @@ The redirection is accomplished in two steps, both requiring root access.
 
 ### Forward port 80 on another loopback device
 
-This will let us use an address without specifying a port. Ports below `1024` are restricted, but we can redirect port `80` on `127.6.6.3` (or another loopback address) to `127.0.0.1:6330`. This can be done by creating a launch daemon that uses `pfctl` to perform the port forwarding.
+This will let us use an address without specifying a port. Ports below `1024` are restricted, but we can redirect port `80` on `127.6.6.3` (or another loopback address) to `127.0.0.1:6330`. We will also redirect port `80` on `fd00::6630` to port `6330` on `::1`. This can be done by creating a launch daemon that uses `pfctl` to perform the port forwarding.
 
 The only safe use of the _danger_ script is `script/danger plist` which will print the plist for a launch daemon that will perform the port forwarding. It can be used as a model, or saved as it is to `/Library/LaunchDaemons/ca.heckman.PhotosServer.port-forwarding.plist`.
 
@@ -119,11 +121,12 @@ This file defines ip addresses for specific host names. Adding the following lin
 
 ```
 127.6.3.3       photos.local
+fd00::6630      photos.local
 ```
 
-This will cause the system to resolve `photos.local` to `127.6.3.3`.
+This will cause the system to resolve `photos.local` to `127.6.3.3` (or `fd00::6330)`. 
 
-I highly recommend using a name ending in `.local` because Photos Server only servers HTTP (not HTTPS) and many browsers (an my markdown editor) will not let you connect to most hosts without HTTPS, hosts ending with `.local` are an exception to this rule.
+I highly recommend using a name ending in `.local` because Photos Server only servers HTTP (not HTTPS) and many browsers (an my markdown editor) will not let you connect to most hosts without HTTPS, hosts ending with `.local` are an exception to this rule. The only catch with this TLD is that if you don't include the ip6 address, the system will take 5 seconds before resolving to the ip4 address while the Bonjour service tries to locate `photos.local`.
 
 With the port-forwarding described earlier in place, adn this addition to `/etc/hosts/`, requests to this `photos.local:80` will be forwarded to `127.0.0.1:6330` where they will be served by the Photos Server application.
 
