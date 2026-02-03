@@ -102,7 +102,7 @@ host_main(){
 
 	case "$1" in
 	test) is_in_hosts ;;
-	status) print_host_address ;;
+	status) print_host_addresses ;;
 	add) add_hostname ;;
 	remove) remove_hostname ;;
 	-h|--help|help) ok "$host_usage" ;;
@@ -110,7 +110,7 @@ host_main(){
 	esac
 }
 
-print_ip4_host_address(){
+print_host_addresses(){
 	grep "[[:space:]]${hostname}\$" /etc/hosts
 }
 
