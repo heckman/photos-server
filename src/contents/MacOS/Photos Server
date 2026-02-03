@@ -1,228 +1,225 @@
-#!/usr/bin/osascript -l JavaScript
-/*
- *  Handler
- *
- *  Handles both http requests and url-opening events.
- *
- */
-const tempDirTemplate = "ca.heckman.PhotosServer.exported-media-item.";
+#!/bin/sh
+# Copyright (c) 2024 Erik Ben Heckman, shared under the GPL-3.0 license
+# except where otherwise noted
+# <https://github.com/heckman/photos-server>
+#
+#
+#  photos-http-handler
+#
+#
+# Serves photos from Apple Photos.
 
-const fileManager = $.NSFileManager.defaultManager;
-const photos = Application("Photos");
+# Responds to http requests from stdin, where the root of the url
+# path is either the UUID of a media item in Apple Photos or a
+# search query.
+#
+# If a matching media item is found, it prints, to stdout, a HTTP
+# response with the media item as inline content. If multiple
+# matching media items are found, an arbitrary one is chosen.
+#
+# IF no item is found, or Apple Photos times out during the request,
+# then a 404 HTTP response is printed with a placeholder image.
+#
+# If something unexpected occurs, a 500 HTTP resonse is printed
+# with a placeholder image.
 
-const currentApp = Application.currentApplication();
-currentApp.includeStandardAdditions = true;
-const doShellScript = (script) => currentApp.doShellScript(script);
+## This file is named `Photos Server` so that's how it will appear
+## in the notification center's warning about background tasks.
 
-const alert = (message) => log("alert", message); // programming error
-const error = (message) => log("err", message); // 500, 504
-const notice = (message) => log("notice", message); // 404
-const info = (message) => log("info", message); // 200
-const debug = (message) => log("debug", message); // internal state
+set -eu
 
-const log = (level, message) =>
-	$.NSFileHandle.fileHandleWithStandardError.writeData(
-		$.NSString.alloc
-			.initWithString(`${level}:Handler: ${message}\n`)
-			.dataUsingEncoding($.NSUTF8StringEncoding),
-	);
+LOGGER_TAG=ca.heckman.PhotoServer.handler
+TEMP_TEMPLATE=ca.heckman.PhotoServer.exported-media-item
+TEMP_DIR=
 
-function run(args) {
-	if (args[0]) {
-		debug("opening: " + args[0]);
-		return withIdentifier(parseUrlPath(args[0])[0], (item) => {
-			photos.spotlight(item);
-			photos.activate();
-		});
-	}
-	debug("args[0]: " + args[0]);
-	const tempDir = createTemporaryDirectory(tempDirTemplate);
-	if (tempDir) {
-		try {
-			handle_http_request(slurpStdin(), tempDir);
-		} catch (e) {
-			// this shouldn't happen, so if it does, log all we have!
-			alert(JSON.stringify(e, Object.getOwnPropertyNames(e), 4));
-			reply500();
-		} finally {
-			deleteDirectory(tempDir);
-		}
-	} else {
-		alert("failed to create temporary directory");
-		reply500();
-	}
-	return true;
+# EITHER OPENS A MEDIA ITEM IN PHOTOS, if $1 is set,
+# OR RESPONDS WITH AN IMAGE TO A HTTP REQUEST via stdin/stdout
+#
+# $1: optional raw encoded url path to open, otherwise
+# &1< raw HTTP request
+main(){
+	if test $# -eq 0
+	then handle_http_request
+	else open_url "$1"
+	fi
+
 }
 
-const parseUrlPath = (urlPath) => {
-	const pathComponents = urlPath?.split("/")?.slice(1); // drop the initial /;
-	return [
-		pathComponents?.at(0) || "", // identifier
-		pathComponents?.at(-1) || pathComponents?.at(-2) || "", // basename
-	];
-};
+# OPENS A MEDIA ITEM IN PHOTOS
+# EXITS 0 on success, 1 on failure
+# $1: raw encoded url path
+open_url(){
+	if basename="$(open_media_item "$1")"
+	then
+		log info "Opened item: $basename"
+		exit 0
+	else
+		log notice "Failed to open item for: $1"
+		exit 1
+	fi
+}
 
-const handle_http_request = (stdin, tempDir) => {
-	// debug("stdin: " + stdin);
-	const request = stdin.split("\n").at(0) || "";
-	info("request: " + request);
-	const urlPath = request?.split(" ")?.at(1); // second word
-	const [identifier, basename] = parseUrlPath(urlPath);
+# PRINTS HTTP response
+# EXITS
+# &1< HTTP request
+handle_http_request(){
+	read -r _ path _
+	log info "Request: $path"
+	TEMP_DIR="$(mktemp -d -t $TEMP_TEMPLATE)" || die NO_TEMP
+	trap 'cleanup $?' EXIT
+	basename="$(export_media_item "$path" "$TEMP_DIR")" || die NO_MATCH
+	filename="$(the_file_in "$TEMP_DIR")" || die NO_EXPORT
+	serve_file "$filename" "$basename"
+	exit 0
+}
 
-	debug("identifier: " + identifier);
-	debug("basename: " + basename);
+# PRINTS HTTP response
+# $1: absolute path to file
+# $2: basename for content returned
+serve_file(){
+	log info "Serving: $1"
+	printf 'HTTP/1.1 200 OK\r\n'
+	printf 'Connection: close\r\n'
+	printf 'Content-Type: %s\r\n' "$(file -b --mime-type "$1")"
+	printf 'Content-Length: %d\r\n' "$(stat -f'%z' "$1")"
+	printf 'Content-Disposition: inline; filename=%s\r\n' "$2.${1##*.}"
+	printf '\r\n'
+	cat "$1";
+}
 
-	if (!identifier) {
-		notice("no identifier in request");
-		return reply404();
-	}
+# PRINTS absolute path to a file in the directory
+# [0] if successful; [1] if not
+# $1: absolute path to a directory
+the_file_in(){
+	find "$1" -maxdepth 1 -type f ! -name '.*' 2>/dev/null |
+	grep -F ''
+}
 
-	// returns false if the item is not found,
-	// but we'll just check if a file was exported
-	withIdentifier(identifier, (item) => {
-		photos.export([item], {
-			to: Path(tempDir),
-			usingOriginals: false,
-		});
-	});
-	const exportedFilename = directoryContents(tempDir)?.at(0);
+# EXPORTS file to temporary directory
+# PRINTS basename of found media item
+# [0] if successful; [1] if not
+# $1: raw encoded url path
+# $2: temporary directory, cannot contain ' character or other weirdness
+export_media_item(){
+	jxa "$1" "photos.export([item],{to:Path('${2}'),usingOriginals:false});" |
+	grep .
+}
 
-	if (!exportedFilename) {
-		notice(`no file exported for '${identifier}'`);
-		return reply404();
-	}
+# OPENS media item in Photos application
+# PRINTS basename of found media item
+# [0] if successful; [1] if not
+# $1: raw encoded url path
+open_media_item(){
+	jxa "$1" 'photos.spotlight(item);photos.activate()' |
+	grep .
+}
 
-	const filename =
-		basename + "." + exportedFilename.split(".").at(-1);
-	const filepath = tempDir + "/" + exportedFilename;
-	info(`serving '${identifier}' as '${filename}'`);
-	return reply(
-		[
-			"HTTP/1.1 200 OK",
-			`Content-Type: ${mimeType(filepath)}`,
-			`Content-Length: ${fileSize(filepath)}`,
-			`Content-Disposition: inline; filename=${filename}`,
-		],
-		"",
-		filepath,
-	);
-};
 
-// run a callback withthea media item selected on the basis of identifier,
-// which can be either a UUID or a search query
-//
-// return true if the callback finished before the timeout,
-// false otherwise
+# >&1 basename if search successful; nothing otherwise
+# $1: raw encoded url path
+# $2: jxa callback body of function(item)
+jxa(){
+	{
+		{
+
+
+			osascript -l JavaScript <<-EOF
+const photos = Application("Photos");
+const decodeQuery = (identifier) => identifier?.replace(/[+.~]/g, " ");
+
 function withIdentifier(identifier, callback) {
 	try {
-		// this will fail fast, so no timeout is necessary
-		callback(photos.mediaItems.byId(identifier));
-		debug("Selected by UUID: " + identifier);
+		const item = photos.mediaItems.byId(identifier);
+		callback(item);
+		console.log("Selected by UUID: " + identifier);
 		return true;
 	} catch {
 		try {
-			// this might take longer, so limit its time available
 			const query = decodeQuery(identifier);
 			const items = photos.search({ for: query });
+			if (!items.length) return false;
 			callback(items[Math.floor(Math.random() * items.length)]);
-			debug("Found with query: " + query);
+			console.log("Found with query: " + query);
 			return true;
-		} catch (e) {
+		} catch {
 			return false;
 		}
 	}
 }
+const pathParts="${1}"?.split("/");
+const identifier=pathParts?.at(1);
+console.log("Identifier: " + identifier);
+if ( identifier
+	&& withIdentifier(identifier, (item) => { ${2} })
+	&& (basename = pathParts?.at(-1) || pathParts?.at(-2))
+)
+	decodeURIComponent(basename);
+			EOF
+		} 2>&1 1>&3 |
+		while IFS= read -r message
+		do log debug "$message"
+		done
+	} 3>&1
+}
 
-// decode a string to be used as a query
-// by replacing certain symbols with spaces
-const decodeQuery = (query) => {
-	return query?.replace(/[+.~]/g, " ");
-};
+# EXITS CLEAN TO TRAP or UNCLEAN UNTRAPPED (called by trap)
+# $1: enum
+# $2: exit code if unknown error
+die(){
+	case "$1" in
+	NO_MATCH)
+		log "notice" "No matching media item found."
+		svg "404 Not Found" "$missing_svg" "missing"
+		exit 0;;
+	NO_TIME)
+		log "err" "Request to Photos timed out."
+		svg "504 Gateway Timeout" "$timeout_svg" "timeout"
+		exit 0;;
+	NO_TEMP)
+		log "alert" "Failed to create temporary directory.";;
+	NO_EXPORT)
+		log "err" "Failed to read exported file.";;
+	*)
+		log "alert" "Uncaught error: $2";;
+	esac
+	svg "500 Internal Server Error" "$error_svg" "error"
+	exit "${2:-0}"
+}
 
-const slurpStdin = () =>
-	$.NSString.alloc.initWithDataEncoding(
-		$.NSFileHandle.fileHandleWithStandardInput.availableData,
-		$.NSUTF8StringEncoding,
-	).js;
+# $1: exit code
+# shellcheck disable=SC2329  # called from a trap
+cleanup(){
+	trap - EXIT
+	if test -d "$TEMP_DIR"
+	then rm -rf "$TEMP_DIR"
+	fi
+	if test "${1:-0}" -ne 0
+	then die UNKNOWN "$1"
+	fi
+}
 
-const createDirectory = (path) =>
-	fileManager.createDirectoryAtPathWithIntermediateDirectoriesAttributesError(
-		path,
-		true,
-		$.nil,
-		$.nil,
-	)
-		? path
-		: null;
+svg(){
+	printf 'HTTP/1.1 %s\r\n' "$1"
+	printf 'Connection: close\r\n'
+	printf 'Content-Type: image/svg+xml\r\n'
+	printf 'Content-Length: %d\r\n' "${#2}"
+	printf 'Content-Disposition: inline; filename=%s.svg\r\n' "$3"
+	printf '\r\n%s' "$2"
+}
 
-// returning boolean version
-const deleteDirectory = (directory) =>
-	fileManager.removeItemAtPathError(directory, $.nil);
+# WRITES TO SYSTEM LOGGER
+#  0: on success
+# $1: one of
+#   debug   intermediate values
+#   info    regular activity (200)
+#   notice  irrecgular activity (404)
+#   err     error fetching request (500)
+#   alert   things that should never happen
+# $2: message
+log(){ logger -s -p "user.$1" "[$LOGGER_TAG] $2"; }
+# log(){ echo "[$1] $2">&2;}
 
-const createTemporaryDirectory = (template = "") =>
-	createDirectory(
-		$.NSTemporaryDirectory().js +
-			template +
-			$.NSUUID.UUID.UUIDString.js,
-	);
-
-const directoryContents = (directory) =>
-	((files) =>
-		files && !files.isNil() ? ObjC.deepUnwrap(files) : null)(
-		fileManager.contentsOfDirectoryAtPathError(directory, $.nil),
-	);
-
-const mimeType = (filePath) =>
-	doShellScript(
-		`file -b --mime-type '${filePath.replace(/\'/g, "'\\''")}' | grep -v '^cannot'`,
-	) || null;
-
-const fileSize = (filePath) =>
-	((attributes) =>
-		!attributes.isNil()
-			? attributes.objectForKey($.NSFileSize).js
-			: null)(
-		fileManager.attributesOfItemAtPathError(filePath, $.nil),
-	);
-
-const reply = (headers, text, filePath = null) => {
-	const stringContent = headers.join("\r\n") + "\r\n\r\n" + text;
-	const stdOut = $.NSFileHandle.fileHandleWithStandardOutput;
-	stdOut.writeData(
-		$.NSString.alloc
-			.initWithString(String(stringContent))
-			.dataUsingEncoding($.NSUTF8StringEncoding),
-	);
-	if (filePath)
-		stdOut.writeData($.NSData.dataWithContentsOfFile(filePath));
-};
-
-const reply200 = (filepath, filename) =>
-	reply(
-		[
-			"HTTP/1.1 200 OK",
-			`Content-Type: ${fileType(filepath)}`,
-			`Content-Length: ${fileSize(filepath)}`,
-			`Content-Disposition: inline; filename=${filename || filepath.split("/").at(-1)}`,
-		],
-		"",
-		filepath,
-	);
-
-const replySvg = (responseCode, svg) =>
-	reply(
-		[
-			"HTTP/1.1 " + responseCode,
-			"Content-Type: image/svg+xml",
-			"Content-Length: " + svg.length,
-		],
-		svg,
-	);
-
-const reply404 = () =>
-	replySvg(
-		"404 Not Found",
-		`<?xml version="1.0" encoding="UTF-8"?>
+missing_svg='<?xml version="1.0" encoding="UTF-8"?>
 <!-- old school pixellated netscape broken image icon -->
 <!--
   icon created for Netscape Navigator by Marsh Chamberlin (https://dataglyph.com)
@@ -258,12 +255,9 @@ const reply404 = () =>
     <path d="M3,9 l1,0 l0,1 l1,0 l0,1 l1,0 l0,1 l-3,0 Z" fill="#f73ae1"></path>
     <path d="M3,12 l3,0 l0,1 l-3,0 Z" fill="black"></path>
   </g>
-</svg>`,
-	);
-const reply500 = () =>
-	replySvg(
-		"500 Internal Server Error",
-		`<?xml version="1.0" encoding="UTF-8"?>
+</svg>
+'
+error_svg='<?xml version="1.0" encoding="UTF-8"?>
 <!--
 The "Sad Mac" icon was created for Apple Inc. by Susan Kare https://kareprints.com
 The SVG was hand-coded Erik Ben Heckman https://erik.heckman.ca
@@ -281,12 +275,9 @@ and can be found embedded in the code for https://github.com/heckman/photos-serv
     M16,16 h5 v2 h3 v1 h-1 v-2 h-8 v 1 h 1 Z
     M9,26 h2 v1 h-2 Z
     M21,25 h6 v1 h-6 Z"></path>
-</svg>`,
-	);
-const reply504 = () =>
-	replySvg(
-		"504 Gateway Timeout",
-		`<?xml version="1.0" encoding="UTF-8"?>
+</svg>
+'
+timeout_svg='<?xml version="1.0" encoding="UTF-8"?>
 <!--
 The "Watch" cursor was created for Apple Inc. by Susan Kare https://kareprints.com
 The SVG was hand-coded Erik Ben Heckman https://erik.heckman.ca who added the exclaimation
@@ -305,42 +296,8 @@ point and can be found embedded in the code for https://github.com/heckman/photo
   <path id="bang" fill-rule=" evenodd" fill="#eb161e" d="
     M 18 1 v16 h 3 v -4 h -3 v 1 h 3 v -13 Z
   "></path>"
-</svg>`,
-	);
+</svg>'
 
-function runWithTimeout(taskFunction, timeoutMs) {
-	let finished = false;
-	let result = null;
+main "$@"
 
-	// Start your task
-	const taskThread = $.NSThread.alloc.initWithTargetSelectorObject(
-		$.NSBlockOperation.blockOperationWithBlock(() => {
-			result = taskFunction();
-			finished = true;
-		}),
-		"main",
-		null,
-	);
 
-	taskThread.start;
-
-	// Use NSRunLoop to wait until 'finished' is true or timeout is reached
-	const limitDate = $.NSDate.dateWithTimeIntervalSinceNow(
-		timeoutMs / 1000,
-	);
-	while (
-		!finished &&
-		$.NSRunLoop.currentRunLoop.runModeBeforeDate(
-			"NSDefaultRunLoopMode",
-			limitDate,
-		)
-	) {
-		if ($.NSDate.date.compare(limitDate) == $.NSOrderedDescending)
-			break;
-	}
-
-	if (!finished) {
-		throw new Error("Task timed out");
-	}
-	return result;
-}
