@@ -2,29 +2,27 @@
 # Copyright (c) 2024 Erik Ben Heckman, shared under the GPL-3.0 license
 # except where otherwise noted
 # <https://github.com/heckman/photos-server>
-#
-#
-#  photos-http-handler
-#
-#
-# Serves photos from Apple Photos.
 
-# Responds to http requests from stdin, where the root of the url
-# path is either the UUID of a media item in Apple Photos or a
-# search query.
-#
-# If a matching media item is found, it prints, to stdout, a HTTP
-# response with the media item as inline content. If multiple
-# matching media items are found, an arbitrary one is chosen.
-#
-# IF no item is found, or Apple Photos times out during the request,
-# then a 404 HTTP response is printed with a placeholder image.
-#
-# If something unexpected occurs, a 500 HTTP resonse is printed
-# with a placeholder image.
+##
+##  photos-http-handler
+##  version 0.4
+
+# With a URL path as an argument, will open the corresponding
+# media item in Apple Photos. Without arguments, expects a valid
+# HTTP request on stdin, and the media item corresponding to the
+# requessted URL will be delivered via stdout as an HTTP response.
+
+# The media item is selected using the first component of the URL path
+# as an identifier. The identifier will first be used as a UUID. If that
+# fails, it will be used as a seach query, after substituting all plus
+# (`+`) tilde (`~`) and period (`.`) characters with spaces. If more
+# than one media item is found, a random one will be selected.
 
 ## This file is named `Photos Server` so that's how it will appear
 ## in the notification center's warning about background tasks.
+##
+## It might still appear as `sh` for permission to access photos
+## though. I'm having difficulty reproducing this.
 
 set -eu
 
@@ -42,7 +40,6 @@ main(){
 	then handle_http_request
 	else open_url "$1"
 	fi
-
 }
 
 # OPENS A MEDIA ITEM IN PHOTOS
