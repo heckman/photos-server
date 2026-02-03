@@ -249,7 +249,7 @@ print_plist(){
         <array>
             <string>/bin/sh</string>
             <string>-c</string>
-            <string>/usr/bin/printf "rdr pass on lo0 inet proto tcp from any to %s port 80 -> 127.0.0.1 port %s\nrdr pass on lo0 inet6 proto tcp from any to %s port 80 -> ::1 port %s\n" "${ip4address}" "${port}" "${ip6address}" "${port}" | /sbin/pfctl -a ${pf_anchor} -f -</string>
+            <string>/usr/bin/printf "rdr pass on lo0 inet proto tcp from any to ${ip4address} port 80 -> 127.0.0.1 port ${port}\nrdr pass on lo0 inet6 proto tcp from any to ${ip6address} port 80 -> ::1 port ${port}\n" | /sbin/pfctl -a ${pf_anchor} -f -</string>
         </array>
         <key>RunAtLoad</key>
         <true/>
