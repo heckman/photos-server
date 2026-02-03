@@ -123,7 +123,8 @@ function withIdentifier(identifier, callback) {
 		try {
 			// this might take longer, so limit its time available
 			const query = decodeQuery(identifier);
-			callback(photos.search({ for: query })[0]);
+			const items = photos.search({ for: query });
+			callback(items[Math.floor(Math.random() * items.length)]);
 			debug("Found with query: " + query);
 			return true;
 		} catch (e) {
