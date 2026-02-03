@@ -322,21 +322,9 @@ function run() {
 function GURLGURL(url) {
 	const origin = "http://" + config.get("authority");
 	if (url.startsWith(origin)) {
-		const photos = Application("Photos");
-		const query = url.split("/")[3]?.replace(/[+.~]/g, " ") || "";
-		try {
-			photos.mediaItems.byId(query).spotlight();
-		} catch {
-			try {
-				photos.search({ for: query })[0].spotlight();
-			} catch {
-				// no search results, don't spotlight anything
-			}
-		}
-		photos.activate();
+		const urlPath = url.substring(origin.length);
+		app.doShellScript(`'${HANDLER}' '${urlPath}'`);
 	} else {
-		const app = Application.currentApplication();
-		app.includeStandardAdditions = true;
 		app.doShellScript(
 			`open -a "${config.get("defaultBrowser")}" ${url}`,
 		);

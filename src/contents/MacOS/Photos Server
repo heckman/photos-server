@@ -1,88 +1,101 @@
 #!/usr/bin/osascript -l JavaScript
+/*
+ *  Handler
+ *
+ *  Handles both http requests and url-opening events.
+ *
+ */
+const tempDirTemplate = "ca.heckman.PhotosServer.exported-media-item.";
 
-ObjC.import("Foundation");
+const fileManager = $.NSFileManager.defaultManager;
+const photos = Application("Photos");
 
-const BUNDLE_ID = "ca.heckman.PhotosServer";
+const currentApp = Application.currentApplication();
+currentApp.includeStandardAdditions = true;
+const doShellScript = (script) => currentApp.doShellScript(script);
 
-const FILE_MANAGER = $.NSFileManager.defaultManager;
-const TEMP_DIR_TEMPLATE = BUNDLE_ID + ".exported-media-item.";
-const CURRENT_APPLICATION = Application.currentApplication();
-CURRENT_APPLICATION.includeStandardAdditions = true;
+const alert = (message) => log("alert", message); // programming error
+const error = (message) => log("err", message); // 500, 504
+const notice = (message) => log("notice", message); // 404
+const info = (message) => log("info", message); // 200
+const debug = (message) => log("debug", message); // internal state
 
-const PHOTOS = Application("Photos");
-
-const logError = (error) => log(message, "ERROR");
-const debug = (message) => log(message, "DEBUG");
-
-timestamp = () =>
-	new Intl.DateTimeFormat("fr-CA", {
-		year: "numeric",
-		month: "2-digit",
-		day: "2-digit",
-		hour: "2-digit",
-		minute: "2-digit",
-		second: "2-digit",
-		timeZoneName: "longOffset",
-	})
-		.format(new Date())
-		.replace(/\s(UTC|GMT)/u, "")
-		.replace(/\s/, "T");
-
-const log = (message, level = "INFO") =>
-	((text) => {
-		$.NSFileHandle.fileHandleWithStandardError.writeData(
-			$.NSString.alloc
-				.initWithString(text + "\n")
-				.dataUsingEncoding($.NSUTF8StringEncoding),
-		);
-	})(`${timestamp()} [${level}] ${message}`);
+const log = (level, message) =>
+	$.NSFileHandle.fileHandleWithStandardError.writeData(
+		$.NSString.alloc
+			.initWithString(`${level}:Handler: ${message}\n`)
+			.dataUsingEncoding($.NSUTF8StringEncoding),
+	);
 
 function run(args) {
-	// slurpStdin();
-	// reply();
-
-	const tempDir = createTemporaryDirectory(TEMP_DIR_TEMPLATE);
+	if (args[0]) {
+		debug("opening: " + args[0]);
+		return withIdentifier(parseUrlPath(args[0])[0], (item) => {
+			photos.spotlight(item);
+			photos.activate();
+		});
+	}
+	debug("args[0]: " + args[0]);
+	const tempDir = createTemporaryDirectory(tempDirTemplate);
 	if (tempDir) {
 		try {
 			handle_http_request(slurpStdin(), tempDir);
-		} catch (error) {
-			logError(error);
+		} catch (e) {
+			// this shouldn't happen, so if it does, log all we have!
+			alert(JSON.stringify(e, Object.getOwnPropertyNames(e), 4));
 			reply500();
 		} finally {
 			deleteDirectory(tempDir);
 		}
 	} else {
-		logError("failed to create temporary directory");
+		alert("failed to create temporary directory");
 		reply500();
 	}
+	return true;
 }
 
-function handle_http_request(stdin, tempDir) {
+const parseUrlPath = (urlPath) => {
+	const pathComponents = urlPath?.split("/")?.slice(1); // drop the initial /;
+	return [
+		pathComponents?.at(0) || "", // identifier
+		pathComponents?.at(-1) || pathComponents?.at(-2) || "", // basename
+	];
+};
+
+const handle_http_request = (stdin, tempDir) => {
 	// debug("stdin: " + stdin);
 	const request = stdin.split("\n").at(0) || "";
-	debug("request: " + request);
-	const url = request?.split(" ")?.at(1); // second word
-	const urlComponents = url?.split("/")?.slice(1); // drop the initial /;
-	const identifier = urlComponents?.at(0) || "";
-	const basename =
-		urlComponents?.at(-1) || urlComponents?.at(-2) || "";
+	info("request: " + request);
+	const urlPath = request?.split(" ")?.at(1); // second word
+	const [identifier, basename] = parseUrlPath(urlPath);
+
 	debug("identifier: " + identifier);
 	debug("basename: " + basename);
 
-	if (!identifier) return reply404();
-
-	if (!exportMediaItemFromPhotos(identifier, tempDir))
+	if (!identifier) {
+		notice("no identifier in request");
 		return reply404();
+	}
+
+	// returns false if the item is not found,
+	// but we'll just check if a file was exported
+	withIdentifier(identifier, (item) => {
+		photos.export([item], {
+			to: Path(tempDir),
+			usingOriginals: false,
+		});
+	});
 	const exportedFilename = directoryContents(tempDir)?.at(0);
 
-	if (!exportedFilename)
-		throw new Error("Failed to find exported file");
-
-	debug("exportedFilename: " + exportedFilename);
+	if (!exportedFilename) {
+		notice(`no file exported for '${identifier}'`);
+		return reply404();
+	}
 
 	const filename =
 		basename + "." + exportedFilename.split(".").at(-1);
 	const filepath = tempDir + "/" + exportedFilename;
+	info(`serving '${identifier}' as '${filename}'`);
 	return reply(
 		[
 			"HTTP/1.1 200 OK",
@@ -93,42 +106,46 @@ function handle_http_request(stdin, tempDir) {
 		"",
 		filepath,
 	);
-}
-const decodeQuery = (query) => query?.replace(/[+.~]/g, " ");
+};
 
-function callWithMediaItemByIdentifier(identifier, callback) {
+// run a callback withthea media item selected on the basis of identifier,
+// which can be either a UUID or a search query
+//
+// return true if the callback finished before the timeout,
+// false otherwise
+function withIdentifier(identifier, callback) {
 	try {
-		debug("UUID: " + identifier);
-		callback(PHOTOS.mediaItems.byId(identifier));
+		// this will fail fast, so no timeout is necessary
+		callback(photos.mediaItems.byId(identifier));
+		debug("Selected by UUID: " + identifier);
 		return true;
 	} catch {
 		try {
+			// this might take longer, so limit its time available
 			const query = decodeQuery(identifier);
-			debug("query: " + query);
-			callback(PHOTOS.search({ for: query })[0]);
+			callback(photos.search({ for: query })[0]);
+			debug("Found with query: " + query);
 			return true;
-		} catch {
+		} catch (e) {
 			return false;
 		}
 	}
 }
-function exportMediaItemFromPhotos(identifier, tempDir) {
-	return callWithMediaItemByIdentifier(identifier, (item) => {
-		PHOTOS.export([item], {
-			to: Path(tempDir),
-			usingOriginals: false,
-		});
-	});
-}
 
-slurpStdin = () =>
+// decode a string to be used as a query
+// by replacing certain symbols with spaces
+const decodeQuery = (query) => {
+	return query?.replace(/[+.~]/g, " ");
+};
+
+const slurpStdin = () =>
 	$.NSString.alloc.initWithDataEncoding(
 		$.NSFileHandle.fileHandleWithStandardInput.availableData,
 		$.NSUTF8StringEncoding,
 	).js;
 
 const createDirectory = (path) =>
-	FILE_MANAGER.createDirectoryAtPathWithIntermediateDirectoriesAttributesError(
+	fileManager.createDirectoryAtPathWithIntermediateDirectoriesAttributesError(
 		path,
 		true,
 		$.nil,
@@ -139,7 +156,7 @@ const createDirectory = (path) =>
 
 // returning boolean version
 const deleteDirectory = (directory) =>
-	FILE_MANAGER.removeItemAtPathError(directory, $.nil);
+	fileManager.removeItemAtPathError(directory, $.nil);
 
 const createTemporaryDirectory = (template = "") =>
 	createDirectory(
@@ -151,11 +168,11 @@ const createTemporaryDirectory = (template = "") =>
 const directoryContents = (directory) =>
 	((files) =>
 		files && !files.isNil() ? ObjC.deepUnwrap(files) : null)(
-		FILE_MANAGER.contentsOfDirectoryAtPathError(directory, $.nil),
+		fileManager.contentsOfDirectoryAtPathError(directory, $.nil),
 	);
 
 const mimeType = (filePath) =>
-	CURRENT_APPLICATION.doShellScript(
+	doShellScript(
 		`file -b --mime-type '${filePath.replace(/\'/g, "'\\''")}' | grep -v '^cannot'`,
 	) || null;
 
@@ -164,10 +181,10 @@ const fileSize = (filePath) =>
 		!attributes.isNil()
 			? attributes.objectForKey($.NSFileSize).js
 			: null)(
-		FILE_MANAGER.attributesOfItemAtPathError(filePath, $.nil),
+		fileManager.attributesOfItemAtPathError(filePath, $.nil),
 	);
 
-function reply(headers, text, filePath = null) {
+const reply = (headers, text, filePath = null) => {
 	const stringContent = headers.join("\r\n") + "\r\n\r\n" + text;
 	const stdOut = $.NSFileHandle.fileHandleWithStandardOutput;
 	stdOut.writeData(
@@ -177,7 +194,7 @@ function reply(headers, text, filePath = null) {
 	);
 	if (filePath)
 		stdOut.writeData($.NSData.dataWithContentsOfFile(filePath));
-}
+};
 
 const reply200 = (filepath, filename) =>
 	reply(
@@ -289,3 +306,40 @@ point and can be found embedded in the code for https://github.com/heckman/photo
   "></path>"
 </svg>`,
 	);
+
+function runWithTimeout(taskFunction, timeoutMs) {
+	let finished = false;
+	let result = null;
+
+	// Start your task
+	const taskThread = $.NSThread.alloc.initWithTargetSelectorObject(
+		$.NSBlockOperation.blockOperationWithBlock(() => {
+			result = taskFunction();
+			finished = true;
+		}),
+		"main",
+		null,
+	);
+
+	taskThread.start;
+
+	// Use NSRunLoop to wait until 'finished' is true or timeout is reached
+	const limitDate = $.NSDate.dateWithTimeIntervalSinceNow(
+		timeoutMs / 1000,
+	);
+	while (
+		!finished &&
+		$.NSRunLoop.currentRunLoop.runModeBeforeDate(
+			"NSDefaultRunLoopMode",
+			limitDate,
+		)
+	) {
+		if ($.NSDate.date.compare(limitDate) == $.NSOrderedDescending)
+			break;
+	}
+
+	if (!finished) {
+		throw new Error("Task timed out");
+	}
+	return result;
+}
