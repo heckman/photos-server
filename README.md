@@ -1,23 +1,30 @@
 # Photos Server
 
-Photos Server provides three features:
+Photos Server does three things:
 
-- a utility to copy HTTP links, in markdown form, of the media items selected in the Apple Photos application, suitable for triggering with a keyboard shortcut.
-- an HTTP interface for viewing media items in the Photos library using those links.
-- a "default browser" that will open links to certain http urls in the Photos application,
-  while passing the remainder to a pre-selected browser.
+1. Serves media items from the Photos library via HTTP on localhost.
+2. Opens media items in Photos by opening a particular type of localhost URL.
+3. Copies links to the currently selected items in the Photos application.
 
 For the remainder of this document we will use the term "Photo" to refer to a media item, which can be, in fact, a video.
 
+
+
 ## Use case
 
-I wanted to embed photos from my Photos library into notes I write in markdown, without exporting them, and without embedding them in the repository I keep my notes in.
+I make notes in markdown documents, stored in a git repository. Rather than storing copies of my photos I want to include with my notes, I use links to URLs that resolve to the items in my Photos library.
 
-With this application, I select an image in Apple Photos, use a keyboard shortcut to copy a link to it, then paste it in my markdown document. It looks like this:
+When I select items in the Photos application and press a hotkey combination, links to those items are copied to the clipboard as markdown images.
+
+In the video below, I then open my editor and paste the image links into a markdown document.
+
+When I open the linked url, the Photos application opens, focussed on the image.
 
 ![Demo](https://github.com/user-attachments/assets/d4d54ee1-15b2-4621-b701-2c591b1ef237)
 
-Later on, If I right-click on the image in my markdown editor, it gives me the option to "Open Image in Browser...". When I select it, the Photos application opens to a view of the photo.
+
+
+The url
 
 ## The three features
 
@@ -78,9 +85,9 @@ The UI of the control panel is somewhat limited because it restricts itself to u
 
 ### Dependencies
 
-- `/opt/homebrew/bin/bash` — the command that handle incoming HTTP requests has this hardcoded as its interpreter. It needs to be an absolute path pointing at a modern (v4.0+) version of bash. You can edit this to suit. The file can be found in the repository at `src/contents/MacOS/Photos Server`.
+- The installation scripts require ***jq*** and a recent-ish version of ***bash***. Both are available  via [homebrew](https://brew.sh). 
 
-- Building the application requires [**_jq_**](https://jqlang.org), which can be installed vie [homebrew](https://brew.sh). It also uses a bunch of system utilities—I believe all of them are included with MacOS, but it is possible Xcode is required.
+- I don't think ***Xcode*** is required, but it might be required for some of the icon generation—I don't really know. Please let me know if you run into an Xcode dependency, or any other surprise dependencies.
 
 ### Build process
 
@@ -96,7 +103,15 @@ Once built it needs to be moved to the Applications folder to work correctly.
 
 Photos Server will listen for incoming connections by creating a launch agent at `~/Library/LaunchAgents/ca.heckman.path.plist`. This file can be removed from the control panel, but it will not be automatically removed when the Photos Server application is deleted. Photos Server also creates small file to store its settings at `~/Library/Preferences/ca.heckman.PhotosServer.plist` which will also be left behind.
 
-Currently, there is also a log at `~/Library/Logs/ca.heckman.PhotosServer/http-handler-error.log` that never (ever) gets cleaned up. I'm in the process of changing the logging to use the system log, but in the mean time this file could get quite large.
+### The log
+
+The latest version uses the system log for the part of the application that handles http requests and opens urls. The following command filters the system log stream for the handler, piping it to awk to filter out less interesting content.
+
+```shell
+log stream --debug --predicate 'process == "logger" AND composedMessage CONTAINS "ca.heckman.PhotoServer.handler"' | awk 'NR>2{printf("%s %-8s%s\n",substr($2,1,12),$4,substr($0,index($0,"[ca.heckman.PhotoServer.handler]")+32))}'
+```
+
+
 
 ## Fancy redirection
 
@@ -111,7 +126,7 @@ The redirection is accomplished in two steps, both requiring root access.
 
 ### Forward port 80 on another loopback device
 
-This will let us use an address without specifying a port. Ports below `1024` are restricted, but we can redirect port `80` on `127.6.6.3` (or another loopback address) to `127.0.0.1:6330`. We will also redirect port `80` on `fd00::6630` to port `6330` on `::1`. This can be done by creating a launch daemon that uses `pfctl` to perform the port forwarding.
+This will let us use an address without specifying a port. Ports below `1024` are restricted, but we can redirect port `80` on `127.6.6.3` (or another loopback address) to `127.0.0.1:6330`. We will also redirect port `80` on `fd00::6630` to port `6330` on `::1`. This can be done by creating a launch daemon that uses `pfctl` to perform the port forwarding.
 
 The only safe use of the _danger_ script is `script/danger plist` which will print the plist for a launch daemon that will perform the port forwarding. It can be used as a model, or saved as it is to `/Library/LaunchDaemons/ca.heckman.PhotosServer.port-forwarding.plist`.
 
@@ -124,15 +139,13 @@ This file defines ip addresses for specific host names. Adding the following lin
 fd00::6630      photos.local
 ```
 
-This will cause the system to resolve `photos.local` to `127.6.3.3` (or `fd00::6330)`. 
+This will cause the system to resolve `photos.local` to `127.6.3.3` (or `fd00::6330)`. 
 
 I highly recommend using a name ending in `.local` because Photos Server only servers HTTP (not HTTPS) and many browsers (an my markdown editor) will not let you connect to most hosts without HTTPS, hosts ending with `.local` are an exception to this rule. The only catch with this TLD is that if you don't include the ip6 address, the system will take 5 seconds before resolving to the ip4 address while the Bonjour service tries to locate `photos.local`.
 
 With the port-forwarding described earlier in place, adn this addition to `/etc/hosts/`, requests to this `photos.local:80` will be forwarded to `127.0.0.1:6330` where they will be served by the Photos Server application.
 
-## Development
 
-This program is a combination of shell scripts and JXA (JavaScript for Automation). I might rewrite it in Swift. I wrote it for my own use. If it is useful to you please let me know. If you have are any issues or suggestions please let me know.
 
 ## License
 
