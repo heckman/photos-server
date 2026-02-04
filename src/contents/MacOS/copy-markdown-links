@@ -14,16 +14,12 @@ photos.includeStandardAdditions = true;
 const app = Application.currentApplication();
 app.includeStandardAdditions = true;
 
-const defaultAuthority = "photos.local";
+const defaultOrigin = "http://127.0.0.1:6330";
 
-const origin =
-	"http://" +
-	(
-		app.doShellScript(
-			"defaults read ca.heckman.PhotosServer authority 2>/dev/null || true",
-		) || defaultAuthority
-	).replace(/^https?:\/\//, "");
-
+const origin = () =>
+	app.doShellScript(
+		"defaults read ca.heckman.PhotosServer origin 2>/dev/null || true",
+	) || defaultAuthority;
 
 function altText(props) {
 	return (
@@ -57,7 +53,7 @@ function url(props) {
 	unique = (q) => (photos.search({ for: q }).length == 1 ? q : null);
 	query = (d, w) => `${d.toISOString().slice(0, 10)} ${w}`;
 	return (
-		origin +
+		origin() +
 		"/" +
 		(
 			unique(query(date, filename)) ||

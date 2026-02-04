@@ -8,9 +8,9 @@
 	"entry": "photosServer.jxa",
 	"constants": {
 		"DEFAULTS": {
-			"authority": "photos.local",
-			"defaultBrowser": "Safari",
-			"portString": "6330"
+			"origin": "photos.local",
+			"browser": "Safari",
+			"port": "6330"
 		},
 		"HOMEPAGE": "https://github.com/heckman/photos-server",
 		"HANDLER": "/Applications/Photos Server.app/Contents/MacOS/Photos Server"

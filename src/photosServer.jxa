@@ -122,8 +122,8 @@ function pause() {
 }
 
 function primeModal() {
-	const browser = config.get("defaultBrowser");
-	const host = config.get("authority");
+	const browser = config.get("browser");
+	const host = config.get("origin");
 	const port = launchAgent.getPort();
 	const redirections = app
 		.doShellScript(
@@ -141,9 +141,9 @@ function primeModal() {
 			},
 		},
 		start: { label: "Start the server", action: portModal },
-		authority: {
+		origin: {
 			label: "Set URL prefix that will open in Photos",
-			action: authorityModal,
+			action: originModal,
 		},
 		browser: {
 			label: "Set browser for everything else",
@@ -186,7 +186,7 @@ will open in Photos.
 
 Everything else will open in ${browser}.`;
 
-	list = [...list, choices.authority.label, choices.browser.label];
+	list = [...list, choices.origin.label, choices.browser.label];
 
 	if (redirections) list = [...list, choices.redirections.label];
 
@@ -222,22 +222,22 @@ function redirectionsModal(redirections) {
 	);
 	return true;
 }
-function authorityModal() {
+function originModal() {
 	try {
-		const authority = app.displayDialog(
+		const origin = app.displayDialog(
 			"URLs with this host (and optional port) will be opened in Photos",
 			{
-				defaultAnswer: config.get("authority"),
+				defaultAnswer: config.get("origin"),
 				hiddenAnswer: false,
 				buttons: ["Cancel", "OK"],
 				defaultButton: "OK",
 				cancelButton: "Cancel",
-				withTitle: "Set Authority",
+				withTitle: "Set origin",
 			},
 		);
 		config.set(
-			"authority",
-			authority.textReturned.replace(/^.*\//, ""),
+			"origin",
+			origin.textReturned.replace(/^.*\//, "http://"),
 		);
 	} catch {
 		// ignore error
@@ -320,7 +320,7 @@ function run() {
 }
 
 function GURLGURL(url) {
-	const origin = "http://" + config.get("authority");
+	config.get("origin");
 	if (url.startsWith(origin)) {
 		const urlPath = url.substring(origin.length);
 		app.doShellScript(`'${HANDLER}' '${urlPath}'`);
