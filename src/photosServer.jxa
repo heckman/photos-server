@@ -13,7 +13,11 @@ app.includeStandardAdditions = true;
 
 const config = ((defaults) => {
 	const d = $.NSUserDefaults.standardUserDefaults;
-	d.registerDefaults($(defaults));
+	// ensure all defaults have persistent values
+	Object.keys(defaults).forEach((key) => {
+		if (d.objectForKey(key).isNil())
+			d.setObjectForKey($(defaults[key]), key);
+	});
 	return {
 		get: (key) => d.objectForKey(key).js,
 		set: (key, value) => d.setObjectForKey($(value), key),
