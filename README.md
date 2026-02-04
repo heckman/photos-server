@@ -3,12 +3,10 @@
 Photos Server does three things:
 
 1. Serves media items from the Photos library via HTTP on localhost.
-2. Opens media items in Photos by opening a particular type of localhost URL.
+2. Launches Photos by opening HTTP URLs with a particular pattern.
 3. Copies links to the currently selected items in the Photos application.
 
 For the remainder of this document we will use the term "Photo" to refer to a media item, which can be, in fact, a video.
-
-
 
 ## Use case
 
@@ -21,8 +19,6 @@ In the video below, I then open my editor and paste the image links into a markd
 When I open the linked url, the Photos application opens, focussed on the image.
 
 ![Demo](https://github.com/user-attachments/assets/d4d54ee1-15b2-4621-b701-2c591b1ef237)
-
-
 
 The url
 
@@ -68,7 +64,7 @@ This will stop the server and remove the launch agent from the user's `~/Library
 
 The prefix should be an **_authority_**: the combination of hostname (or IP address) and optional port number (if not 80, which is implied). This value will be used in two places.
 
-1. When links are copied, they will be in the form  http://***authority/basename*** or  http://***authority/UUID/basename***.
+1. When links are copied, they will be in the form http://**_authority/basename_** or http://**_authority/UUID/basename_**.
 2. When Photos Server is the default browser, opening a URL beginning with http://**_authority_**/ will open Apple Photos, with the identified photo selected in the "view" mode.
 
 If you are not using fancy redirection, you'll want this to be "localhost:**_port_**", where _port_ is the same as the value set when starting/restarting the server. With [fancy redirection](#fancy-redirection), this doesn't have to be the case. For example, I use port `6330` and `photos.local` as the authority.
@@ -85,9 +81,9 @@ The UI of the control panel is somewhat limited because it restricts itself to u
 
 ### Dependencies
 
-- The installation scripts require ***jq*** and a recent-ish version of ***bash***. Both are available  via [homebrew](https://brew.sh). 
+- The installation scripts require **_jq_** and a recent-ish version of **_bash_**. Both are available via [homebrew](https://brew.sh).
 
-- I don't think ***Xcode*** is required, but it might be required for some of the icon generation—I don't really know. Please let me know if you run into an Xcode dependency, or any other surprise dependencies.
+- I don't think **_Xcode_** is required, but it might be required for some of the icon generation—I don't really know. Please let me know if you run into an Xcode dependency, or any other surprise dependencies.
 
 ### Build process
 
@@ -110,8 +106,6 @@ The latest version uses the system log for the part of the application that hand
 ```shell
 log stream --debug --predicate 'process == "logger" AND composedMessage CONTAINS "ca.heckman.PhotoServer.handler"' | awk 'NR>2{printf("%s %-8s%s\n",substr($2,1,12),$4,substr($0,index($0,"[ca.heckman.PhotoServer.handler]")+32))}'
 ```
-
-
 
 ## Fancy redirection
 
@@ -139,13 +133,11 @@ This file defines ip addresses for specific host names. Adding the following lin
 fd00::6630      photos.local
 ```
 
-This will cause the system to resolve `photos.local` to `127.6.3.3` (or `fd00::6330)`. 
+This will cause the system to resolve `photos.local` to `127.6.3.3` (or `fd00::6330)`.
 
 I highly recommend using a name ending in `.local` because Photos Server only servers HTTP (not HTTPS) and many browsers (an my markdown editor) will not let you connect to most hosts without HTTPS, hosts ending with `.local` are an exception to this rule. The only catch with this TLD is that if you don't include the ip6 address, the system will take 5 seconds before resolving to the ip4 address while the Bonjour service tries to locate `photos.local`.
 
 With the port-forwarding described earlier in place, adn this addition to `/etc/hosts/`, requests to this `photos.local:80` will be forwarded to `127.0.0.1:6330` where they will be served by the Photos Server application.
-
-
 
 ## License
 
