@@ -269,14 +269,14 @@ function browserModal() {
 	const browser = app.chooseFromList(browserList(), {
 		withTitle: "Select Default Browser",
 		withPrompt: "Pick one",
-		defaultItems: [config.get("defaultBrowser")],
+		defaultItems: [config.get("browser")],
 		okButtonName: "Select",
 		cancelButtonName: "Cancel",
 		multipleSelectionsAllowed: false,
 		emptySelectionAllowed: false,
 	});
 	if (browser !== false) {
-		config.set("defaultBrowser", String(browser[0]));
+		config.set("browser", String(browser[0]));
 	}
 	return true;
 }
@@ -296,7 +296,7 @@ function validPort(port) {
 function portModal(errorMessage = "Select the port") {
 	try {
 		const port = app.displayDialog(errorMessage, {
-			defaultAnswer: config.get("portString"),
+			defaultAnswer: config.get("port"),
 			hiddenAnswer: false,
 			buttons: ["Cancel", "OK"],
 			defaultButton: "OK",
@@ -307,7 +307,7 @@ function portModal(errorMessage = "Select the port") {
 		});
 		if (port.buttonReturned === "OK") {
 			if (validPort(port.textReturned)) {
-				config.set("portString", port.textReturned);
+				config.set("port", port.textReturned);
 				launchAgent.save(port.textReturned);
 				pause("Starting server");
 			} else {
@@ -329,9 +329,7 @@ function GURLGURL(url) {
 		const urlPath = url.substring(origin.length);
 		app.doShellScript(`'${HANDLER}' '${urlPath}'`);
 	} else {
-		app.doShellScript(
-			`open -a "${config.get("defaultBrowser")}" ${url}`,
-		);
+		app.doShellScript(`open -a "${config.get("browser")}" ${url}`);
 	}
 	return true;
 }
