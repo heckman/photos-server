@@ -1,22 +1,31 @@
-#!/bin/sh
+#!/bin/dash
 
 # This prints redirections configured by the Photos Server daemon:
 daemon=ca.heckman.PhotosServer.port-forwarding
 
 # If provided a hostname as an argument, it will be looked up in /etc/hosts
 # and used to substitute matching ip addresses.
+if test $# -gt 0
+then
+	host="${1##*://}"  # remove scheme if present
+	case "$host" in ''|*[!a-zA-Z0-9' '.-]*)
+		echo "invalid hostname: $host" >&2
+		exit 1;;
+	esac
+	hostregex=$(
+		/bin/echo "[[:space:]]${host}" |
+		/usr/bin/sed -E 's/\./\\./g'
+	)
 
-
-# default for $1 is '$$' so it won't match anything in /etc/hosts
-# eacg . character is escaped for use in a regular expression (not $ though)
-hostregex=$(
-	/bin/echo "[[:space:]]${1:-\$\$}\$" | /usr/bin/sed -E 's/\./\\./g'
-)
-
-# sed commands to replace ip addresses with hostname defined in /etc/hosts
-subs="$(
-	/usr/bin/awk "/${hostregex}/"'{printf("s/%s/%s/;",$1,$2)}' /etc/hosts
-)"
+	# sed commands to replace ip addresses with hostname defined in /etc/hosts
+	subs="$(
+		/usr/bin/awk \
+			"/${hostregex}/"'{printf("s/%s/%s/;",$1,$2)}' \
+			/etc/hosts
+	)"
+else
+	subs=''
+fi
 
 # add sed commands to replace localhost ip addresses with 'localhost'
 subs="${subs}s/127.0.0.1:/localhost:/;s/::1:/localhost:/;"
@@ -26,7 +35,7 @@ subs="${subs}s/127.0.0.1:/localhost:/;s/::1:/localhost:/;"
 # defined in the launchdaemon, then apply sub substitutions
 #
 # shellcheck disable=SC2046  # subshell output splits on whitespace
-/usr/bin/printf "IP4:%s🠪%s\nIP6:%s🠪%s\n" $(
+/usr/bin/printf "IP4\n%s🠪%s\n\nIP6\n%s🠪%s\n" $(
 	/bin/launchctl print "system/$daemon" |
 	/usr/bin/grep -- '->' |
 	/usr/bin/sed -E 's/^.* ([0-9.]+) port ([0-9]+) -> ([0-9.]+) port ([0-9]+)\\.* ([a-fA-F0-9:]+) port ([0-9]+) -> ([a-fA-F0-9:]+) port ([0-9]+)\\.*$/\1:\2 \3:\4 \5:\6 \7:\8/;'"${subs}"
