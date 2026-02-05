@@ -127,11 +127,11 @@ function pause() {
 
 function primeModal() {
 	const browser = config.get("browser");
-	const host = config.get("origin");
+	const origin = config.get("origin");
 	const port = launchAgent.getPort();
 	const redirections = app
 		.doShellScript(
-			`/Applications/Photos\\ Server.app/Contents/MacOS/redirections ${host}||:`,
+			`/Applications/Photos\\ Server.app/Contents/MacOS/redirections ${origin.replace(/^.*\/\//, "")}||:`,
 		)
 		.trim();
 	const choices = {
@@ -175,7 +175,7 @@ function primeModal() {
 	let status = "";
 	if (launchAgent.isRunning()) {
 		list = [choices.restart.label, choices.remove.label];
-		status = "Serving photos on 127.0.0.1:" + port;
+		status = "Serving photos on localhost:" + port;
 	} else {
 		list = [choices.start.label];
 		status = launchAgent.isInstalled()
@@ -185,7 +185,7 @@ function primeModal() {
 	status = `${status}
 
 
-Links beginning with "http://${host}"
+Links beginning with "${origin}"
 will open in Photos.
 
 Everything else will open in ${browser}.`;
@@ -229,7 +229,7 @@ function redirectionsModal(redirections) {
 function originModal() {
 	try {
 		const origin = app.displayDialog(
-			"URLs with this host (and optional port) will be opened in Photos",
+			"URLs begining with this prefix will be opened in Photos.\n(http:// will pre prepended if the scheme is not entered here.)",
 			{
 				defaultAnswer: config.get("origin"),
 				hiddenAnswer: false,
@@ -241,7 +241,7 @@ function originModal() {
 		);
 		config.set(
 			"origin",
-			origin.textReturned.replace(/^.*\//, "http://"),
+			"http://" + origin.textReturned.replace(/^.*\//, ""),
 		);
 	} catch {
 		// ignore error

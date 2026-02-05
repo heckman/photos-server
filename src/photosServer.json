@@ -8,7 +8,7 @@
 	"entry": "photosServer.jxa",
 	"constants": {
 		"DEFAULTS": {
-			"origin": "photos.local",
+			"origin": "http://photos.local",
 			"browser": "Safari",
 			"port": "6330"
 		},

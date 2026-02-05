@@ -19,7 +19,7 @@ const defaultOrigin = "http://127.0.0.1:6330";
 const origin = () =>
 	app.doShellScript(
 		"defaults read ca.heckman.PhotosServer origin 2>/dev/null || true",
-	) || defaultAuthority;
+	) || defaultOrigin;
 
 function altText(props) {
 	return (
