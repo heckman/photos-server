@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/dash
 # Copyright (c) 2024 Erik Ben Heckman, shared under the GPL-3.0 license
 # except where otherwise noted
 # <https://github.com/heckman/photos-server>
