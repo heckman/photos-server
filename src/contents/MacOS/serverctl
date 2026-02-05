@@ -1,0 +1,227 @@
+#!/bin/dash
+# Copyright (c) 2024 Erik Ben Heckman, shared under the GPL-3.0 license
+# except where otherwise noted
+# <https://github.com/heckman/photos-server>
+
+##
+##  serverctl
+##  version 0.4
+
+
+
+APP_BID="ca.heckman.PhotosServer"
+
+HTTP_HANDLER="$(dirname "$(realpath "$0")")/Photos Server"
+
+set -eu
+
+LAUNCH_AGENT_LABEL="$APP_BID.listener"
+LAUNCH_AGENT_DIR="$HOME/Library/LaunchAgents"
+LAUNCH_AGENT_PLIST="$LAUNCH_AGENT_DIR/$LAUNCH_AGENT_LABEL.plist"
+
+usage() {
+	echo "
+Usage: serverctl start [port]
+       serverctl [status|stop|port|test]
+
+Controls the server installed by the Photos Server application.
+
+Commands:
+
+    start [port]  If the server is already running, restarts it, otherwise,
+                  installs a startup item to the User's Library, and starts
+		  the server. If a port is specified, it must be an integer
+		  between 1024 and 65535 and it must not be 5000 or 7000. The
+		  port setting will be saved in the User's preferences, whence
+		  it will be read if the port is not specified.
+
+    stop          Stops the server, and uninstalls the startup item.
+
+    status        Prints whether the server is running, and on which port.
+
+    port          Prints the port the server is listening on.
+
+    test          Tests whether the server is running. Returns a non-zero exit
+		  code if the server is not running. Produces no output.
+
+"
+}
+
+main() {
+	case "${1-}" in
+		-h|-help|--help|help) usage;;
+		start|restart|enable|install)
+			test -z "${2-}" || validate_port "$2"
+			if is_server_running
+			then
+				echo "Restarting Photos Server..."
+				stop_server
+			else
+				echo "Starting Photos Server..."
+			fi
+			install_launch_agent "${2-}"
+			start_server
+			echo "Photos Server started on port $(get_port)"
+			;;
+		stop|remove|disable|uninstall) if is_server_running
+			then
+				echo "Stopping Photos Server..."
+				stop_server
+			else
+				echo "Photos Server is not running."
+			fi
+			if is_launch_agent_installed
+			then
+				echo "Removing launch agent..."
+				remove_launch_agent
+				echo "Launch agent has been removed."
+			else
+				echo "Launch agent is not installed."
+			fi
+			;;
+		port)
+			get_port
+			;;
+		test|is-running)
+			is_server_running
+			;;
+		status|'')
+			if is_server_running
+			then echo "Photos Server is running on port $(get_port)"
+			else echo "Photos Server is not running."
+			fi
+			;;
+		*)
+			eval "$1"; exit $?
+			echo "Unknown command: $1" >&2
+			usage >&2
+			return 2
+			;;
+	esac
+}
+
+err() {
+
+
+	case "$1" in
+	PORT_NOT_SET) echo "Port number not set."
+		return 72;;
+	PORT_NOT_NUMBER) echo "'$2' is an invalid port number; it must be a positive integer."
+		return 73;;
+	PORT_TOO_HIGH) echo "Port $2 is too high. It must be between 1024 and 65535."
+		return 74;;
+	PORT_TOO_LOW) echo "Port $2 is too low. It must be between 1024 and 65535."
+		return 75;;
+	PORT_RESERVED) echo "Ports 5000 and 7000 are reserved."
+		return 76;;
+	CANT_MKDIR) echo "Could not create directory: $2"
+		return 77;;
+	CANT_WRITE_PLIST) echo "Could not write plist: $2"
+		return 78;;
+	CANT_READ_DEFAULTS) echo "Could not get default for $2"
+		return 79;;
+	CANT_WRITE_DEFAULTS) echo "Could not set default for $2 to $3"
+		return 80;;
+	CANT_REMOVE_LAUNCH_AGENT) echo "Could not remove launch agent"
+		return 81;;
+	CANT_START_SERVER) echo "Could not start server"
+		return 82;;
+	CANT_STOP_SERVER) echo "Could not stop server"
+		return 83;;
+	NOT_RUNNING) echo "Photos Server is not running."
+		return 84;;
+	LAUNCH_AGENT_NOT_INSTALLED) echo "Launch agent is not installed."
+		return 85;;
+	ALREADY_RUNNING) echo "Photos Server is already running."
+		return 86;;
+	*) echo "Unknown error: $1"
+		return "$1";;
+	esac >&2;
+}
+
+pause() { :;}
+
+validate_port() { local port="$1"
+	test -n "$port" || err PORT_NOT_SET
+	case "$port" in *[!0-9]*|0)
+		err PORT_NOT_NUMBER "$port";;
+	esac
+	test "$port" -le 65535 || err PORT_TOO_HIGH "$port"
+	test "$port" -ge 1024 || err PORT_TOO_LOW "$port"
+	test "$port" -ne 5000 -a "$port" -ne 7000 || err PORT_RESERVED "$port"
+	return 0
+}
+
+write_launch_agent_plist(){ local port="${1#"${1%%[!0]*}"}"
+	mkdir -p "$LAUNCH_AGENT_DIR" || err CANT_MKDIR "$LAUNCH_AGENT_DIR"
+	{
+		plutil -convert xml1 -o "$LAUNCH_AGENT_PLIST" - <<-EOF
+		{
+			Label: "${LAUNCH_AGENT_LABEL}",
+			Program: "${HTTP_HANDLER}",
+			RunAtLoad: false,
+			Sockets: {
+				Photos: {
+					SockNodeName: "localhost",
+					SockServiceName: ${port},
+					SockPassive: true,
+				},
+			},
+			inetdCompatibility: {
+				Wait: false,
+			},
+		}
+		EOF
+	} || err CANT_WRITE_PLIST "$LAUNCH_AGENT_PLIST"
+}
+
+install_launch_agent(){ local port="${1-}"
+	if test -n "$port"
+	then
+		write_launch_agent_plist "$port"
+		defaults write "$APP_BID" port "$port" 2>/dev/null ||
+			err CANT_WRITE_DEFAULTS port "$port"
+	else
+		port="$(defaults read "$APP_BID" port 2>/dev/null)" ||
+			err CANT_READ_DEFAULTS port
+		validate_port "$port"
+		write_launch_agent_plist "$port"
+	fi
+}
+
+remove_launch_agent(){
+	rm "$LAUNCH_AGENT_PLIST" ||
+		err CANT_REMOVE_LAUNCH_AGENT
+}
+
+start_server() {
+	is_launch_agent_installed || err LAUNCH_AGENT_NOT_INSTALLED
+	! is_server_running || err ALLREADY_RUNNING
+	launchctl bootstrap "gui/$(id -u)" "${LAUNCH_AGENT_PLIST}" ||
+		err CANT_START_SERVER
+	pause
+	is_server_running || err CANT_START_SERVER
+}
+
+stop_server() {
+	is_server_running || err NOT_RUNNING
+	launchctl bootout "gui/$(id -u)/${LAUNCH_AGENT_LABEL}" ||
+		err CANT_STOP_SERVER
+	pause
+	! is_server_running || err CANT_STOP_SERVER
+}
+
+is_launch_agent_installed() {
+	test -e "${LAUNCH_AGENT_PLIST}"
+}
+is_server_running() {
+	launchctl list |
+	awk -v id="$LAUNCH_AGENT_LABEL" '$3==id{f=1;exit}END{exit !f}'
+}
+get_port() {
+	plutil -extract Sockets.Photos.SockServiceName raw "${LAUNCH_AGENT_PLIST}"
+}
+
+
+main "$@"
+
