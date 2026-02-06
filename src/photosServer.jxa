@@ -12,13 +12,13 @@ const scripts = {
 };
 
 function run() {
-	activateProcess(exec(scripts.controlPanel()));
+	activateProcess(exec(...scripts.controlPanel()));
 }
 
 function GURLGURL(url) {
 	const preferences = $.NSUserDefaults.standardUserDefaults;
 	if (url.startsWith(preferences.objectForKey("origin").js))
-		return system(scripts.urlHandler(url)) == 0;
+		return system(...scripts.urlHandler(url)) == 0;
 	else launchAppWithUrl(preferences.objectForKey("browser").js, url);
 	return true;
 }
