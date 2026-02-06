@@ -8,6 +8,8 @@
 //
 //
 
+ObjC.import("AppKit");
+
 const bid = "ca.heckman.PhotosServer";
 const app = Application.currentApplication();
 app.includeStandardAdditions = true;
