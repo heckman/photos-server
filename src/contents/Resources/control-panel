@@ -53,16 +53,16 @@ function primeModal() {
 		)
 		.trim();
 	const choices = {
-		restart: { label: "Restart the server", action: portModal },
+		restart: { label: "Change the port", action: portModal },
 		remove: {
-			label: "Remove the server",
+			label: "Disable the server",
 			action: () => {
 				launchAgent.stop();
-				pause("Removing server");
+				pause("Disabling server");
 				return true;
 			},
 		},
-		start: { label: "Start the server", action: portModal },
+		start: { label: "Enable the server", action: portModal },
 		origin: {
 			label: "Set URL prefix that will open in Photos",
 			action: originModal,
@@ -106,7 +106,7 @@ Everything else will open in ${browser}.`;
 	list = [...list, choices.homepage.label];
 
 	const choice = app.chooseFromList(list, {
-		withTitle: "Photos Server Control",
+		withTitle: "Photos Server\nControl Panel",
 		withPrompt: status,
 		defaultItems: [],
 		okButtonName: "Select",
@@ -145,7 +145,7 @@ function originModal() {
 				buttons: ["Cancel", "OK"],
 				defaultButton: "OK",
 				cancelButton: "Cancel",
-				withTitle: "Set origin",
+				withTitle: "Photos Server: Set Origin",
 			},
 		);
 		config.set(
@@ -159,10 +159,10 @@ function originModal() {
 }
 
 function browserList() {
-	const ws = $.NSWorkspace.sharedWorkspace;
-	const appURLs = ws.URLsForApplicationsToOpenURL(
-		$.NSURL.URLWithString($("https://apple.com")),
-	);
+	const appURLs =
+		$.NSWorkspace.sharedWorkspace.URLsForApplicationsToOpenURL(
+			$.NSURL.URLWithString($("https://apple.com")),
+		);
 	return appURLs.js
 		.map((url) => {
 			const name =
@@ -176,7 +176,7 @@ function browserList() {
 }
 function browserModal() {
 	const browser = app.chooseFromList(browserList(), {
-		withTitle: "Select Default Browser",
+		withTitle: "Photos Server: Select Default Browser",
 		withPrompt: "Pick one",
 		defaultItems: [config.get("browser")],
 		okButtonName: "Select",
@@ -199,13 +199,13 @@ function portModal(errorMessage = "Select the port") {
 			defaultButton: "OK",
 			cancelButton: "Cancel",
 			withTitle: launchAgent.isRunning()
-				? "Restart Server"
-				: "Start Server",
+				? "Photos Server: Change Listening Port"
+				: "Photos Server: Enable Server",
 		});
 		if (port.buttonReturned === "OK") {
 			try {
 				launchAgent.start(port.textReturned);
-				pause("Starting server");
+				pause("Enabling server");
 			} catch (e) {
 				portModal(e.message);
 			}
