@@ -11,7 +11,7 @@
 
 APP_BID="ca.heckman.PhotosServer"
 
-HTTP_HANDLER="$(dirname "$(realpath "$0")")/Photos Server"
+HTTP_HANDLER="$(dirname "$(realpath "$0")")/handler"
 
 set -eu
 

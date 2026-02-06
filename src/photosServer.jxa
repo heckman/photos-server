@@ -1,33 +1,83 @@
 ObjC.import("Foundation");
-ObjC.import("unistd");
 ObjC.import("AppKit");
 
-// Preconditions:
-//
-//
-//
-//
-
-const app = Application.currentApplication();
-app.includeStandardAdditions = true;
+const scripts = {
+	urlHandler: (url) => ["/bin/dash", resourcePath("handler"), url],
+	controlPanel: () => [
+		"/usr/bin/osascript",
+		"-l",
+		"JavaScript",
+		resourcePath("control-panel"),
+	],
+};
 
 function run() {
-	const gui = $.NSBundle.mainBundle.pathForResourceOfType(
-		"photos-server-gui",
-		"",
-	).js;
-	app.doShellScript(`nohup '${gui}' > /dev/null 2>&1 &`);
+	activateProcess(exec(scripts.controlPanel()));
 }
 
 function GURLGURL(url) {
 	const preferences = $.NSUserDefaults.standardUserDefaults;
-	const origin = preferences.objectForKey("origin").js;
-	if (url.startsWith(origin)) {
-		const urlPath = url.substring(origin.length);
-		app.doShellScript(`'${HANDLER}' '${urlPath}'`);
-	} else {
-		const browser = preferences.objectForKey("browser").js;
-		app.doShellScript(`open -a "${config.get("browser")}" ${url}`);
-	}
+	if (url.startsWith(preferences.objectForKey("origin").js))
+		return system(scripts.urlHandler(url)) == 0;
+	else launchAppWithUrl(preferences.objectForKey("browser").js, url);
 	return true;
+}
+
+function resourcePath(name) {
+	return $.NSBundle.mainBundle.pathForResourceOfType(name, $()).js;
+}
+
+function exec(bin, ...args) {
+	const t = task(bin, ...args);
+	return t.processIdentifier;
+}
+function system(bin, ...args) {
+	const t = task(bin, ...args);
+	t.waitUntilExit();
+	return t.terminationStatus;
+}
+
+function task(bin, ...args) {
+	const t = $.NSTask.alloc.init;
+	t.executableURL = $.NSURL.fileURLWithPath(bin);
+	t.arguments = args;
+	let error = $();
+	// launch and detach the task
+	if (!t.launchAndReturnError(error))
+		throw new Error(error.localizedDescription.js);
+	return task;
+}
+
+function activateProcess(
+	pid,
+	maxAttempts = 1,
+	initialDelay = 0.25,
+	retryDelay = initialDelay,
+) {
+	delay(initialDelay);
+	for (let i = 0; i < maxAttempts; i++) {
+		const app =
+			$.NSRunningApplication.runningApplicationWithProcessIdentifier(
+				pid,
+			);
+		if (app && !app.isNil()) {
+			if (app.activateWithOptions(2)) {
+				return true;
+			}
+		}
+		delay(retryDelay);
+	}
+	return false;
+}
+
+function launchAppWithUrl(appName, url) {
+	const workspace = $.NSWorkspace.sharedWorkspace;
+	workspace.openURLsWithApplicationAtURLConfigurationCompletionHandler(
+		$([$.NSURL.URLWithString(url)]),
+		$.NSURL.fileURLWithPath(
+			workspace.fullPathForApplication(appName),
+		),
+		$.NSWorkspaceOpenConfiguration.configuration,
+		$(), // No completion handler needed
+	);
 }

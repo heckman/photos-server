@@ -19,7 +19,7 @@ const launchAgent = (() => {
 	// 		"serverctl",
 	// 	).path.js;
 	const serverctl =
-		"/Applications/Photos Server.app/Contents/MacOS/serverctl";
+		"/Applications/Photos Server.app/Contents/Resources/serverctl";
 	return {
 		status: () => app.doShellScript(`'${serverctl}' status`),
 		start: (port) =>

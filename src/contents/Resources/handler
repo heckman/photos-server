@@ -50,8 +50,12 @@ main(){
 # OPENS A MEDIA ITEM IN PHOTOS
 # EXITS 0 on success, 1 on failure
 # $1: raw encoded url path
-open_url(){
-	if basename="$(open_media_item "$1")"
+open_url(){ local urlPath
+	# strip off origin if it is included in url
+	log debug "url to open $1"
+	urlPath="$( expr "$1" : '.*://[^/]*\(/.*\)$' )" || urlPath="$1"
+	log debug "urlPath: $urlPath"
+	if basename="$(open_media_item "${urlPath}")"
 	then
 		log info "Opened item: $basename"
 		exit 0
@@ -195,7 +199,7 @@ die(){
 #  0: on success
 # $1: debug | info | notice | err | alert
 # $2: message
-log(){ logger -s -p "user.$1" "[$LOGGER_TAG] $2"; }
+log(){ logger -p "user.$1" "[$LOGGER_TAG] $2"; }
 # log(){ echo "[$1] $2">&2;}
 
 

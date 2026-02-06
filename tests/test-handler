@@ -4,7 +4,7 @@
 url_path="${1:-/2025-11-13.8804}"
 
 ROOT="$(git rev-parse --show-toplevel)"
-HANDLER="$ROOT/src/contents/MacOS/Photos Server"
+HANDLER="$ROOT/src/contents/Resources/handler"
 
 # "$HANDLER" "/${url_path#/}"
 
