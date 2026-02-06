@@ -1,0 +1,5 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+# Copyright 2026 Erik Ben Heckman <erik@heckman.ca>
+
+log stream --debug --predicate 'process == "logger" AND composedMessage CONTAINS "ca.heckman.PhotoServer.handler"' | awk 'NR>2{printf("%s %-8s%s\n",substr($2,1,12),$4,substr($0,index($0,"[ca.heckman.PhotoServer.handler]")+32))}'
