@@ -48,24 +48,14 @@ function task(bin, ...args) {
 	return t;
 }
 
-function activateProcess(
-	pid,
-	maxAttempts = 1,
-	initialDelay = 0.25,
-	retryDelay = initialDelay,
-) {
-	delay(initialDelay);
-	for (let i = 0; i < maxAttempts; i++) {
-		const app =
-			$.NSRunningApplication.runningApplicationWithProcessIdentifier(
-				pid,
-			);
-		if (app && !app.isNil()) {
-			if (app.activateWithOptions(2)) {
-				return true;
-			}
-		}
-		delay(retryDelay);
+function activateProcess(pid, wait = 0.25) {
+	delay(wait);
+	const bgApp =
+		$.NSRunningApplication.runningApplicationWithProcessIdentifier(
+			pid,
+		);
+	if (bgApp && !bgApp.isNil()) {
+		return bgApp.activateWithOptions(2);
 	}
 	return false;
 }
