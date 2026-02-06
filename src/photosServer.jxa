@@ -45,7 +45,7 @@ function task(bin, ...args) {
 	// launch and detach the task
 	if (!t.launchAndReturnError(error))
 		throw new Error(error.localizedDescription.js);
-	return task;
+	return t;
 }
 
 function activateProcess(
