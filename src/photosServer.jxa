@@ -11,18 +11,19 @@ ObjC.import("AppKit");
 const app = Application.currentApplication();
 app.includeStandardAdditions = true;
 
-const config = ((defaults) => {
+const config = (() => {
 	const d = $.NSUserDefaults.standardUserDefaults;
 	// ensure all defaults have persistent values
-	Object.keys(defaults).forEach((key) => {
-		if (d.objectForKey(key).isNil())
-			d.setObjectForKey($(defaults[key]), key);
-	});
 	return {
+		init: (defaults) =>
+			Object.keys(defaults).forEach((key) => {
+				if (d.objectForKey(key).isNil())
+					d.setObjectForKey($(defaults[key]), key);
+			}),
 		get: (key) => d.objectForKey(key).js,
 		set: (key, value) => d.setObjectForKey($(value), key),
 	};
-})(DEFAULTS);
+})();
 
 const launchAgent = (() => {
 	const bid = $.NSBundle.mainBundle.bundleIdentifier.js;
@@ -320,6 +321,7 @@ function portModal(errorMessage = "Select the port") {
 	return true;
 }
 function run() {
+	config.init(DEFAULTS);
 	primeModal();
 }
 
