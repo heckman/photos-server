@@ -26,96 +26,22 @@ const config = (() => {
 })();
 
 const launchAgent = (() => {
-	const bid = $.NSBundle.mainBundle.bundleIdentifier.js;
-	const uid = $.getuid();
-	const label = bid + ".listener";
-	const logDir = `${app.pathTo("home folder")}/Library/Logs/${bid}`;
-	const errLogPath = `${logDir}/http-handler-error.log`;
-	const plistDir = `${app.pathTo("home folder")}/Library/LaunchAgents`;
-	const plistPath = `${plistDir}/${label}.plist`;
+	// Get the URL to the main executable in the MacOS folder
+	const serverctl =
+		$.NSBundle.mainBundle.executableURL.URLByDeletingLastPathComponent.URLByAppendingPathComponent(
+			"serverctl",
+		).path.js;
 	return {
-		stop: function () {
+		status: () => app.doShellScript(`'${serverctl}' status`),
+		start: (port) =>
+			app.doShellScript(`'${serverctl}' start ${port}`),
+		stop: () => app.doShellScript(`'${serverctl}' stop`),
+		port: () => app.doShellScript(`'${serverctl}' port`),
+		isRunning: () => {
 			try {
-				app.doShellScript(
-					`launchctl bootout gui/${uid}/${label} 2>/dev/null`,
-				);
+				app.doShellScript(`'${serverctl}' test`);
 				return true;
 			} catch {
-				return false;
-			}
-		},
-		remove: function () {
-			this.stop();
-			app.doShellScript(`rm ${plistPath}`);
-		},
-		start: function () {
-			try {
-				app.doShellScript(
-					`launchctl bootstrap gui/${uid} ${plistPath} 2>/dev/null`,
-				);
-				return true;
-			} catch {
-				return false;
-			}
-		},
-		isInstalled: function () {
-			try {
-				app.doShellScript(`test -e ${plistPath}`);
-				return true;
-			} catch {
-				return false;
-			}
-		},
-		isRunning: function () {
-			try {
-				app.doShellScript(`
-					set -o pipefail
-					launchctl list | grep -Fq "${label}"
-				`);
-				return true;
-			} catch {
-				return false;
-			}
-		},
-		getPort: function () {
-			try {
-				return app.doShellScript(
-					`plutil -extract Sockets.Photos.SockServiceName raw ${plistPath}`,
-				);
-			} catch {
-				return "0";
-			}
-		},
-		save: function (port) {
-			const plistJson = {
-				Label: label,
-				Program: HANDLER,
-				RunAtLoad: false,
-				Sockets: {
-					Photos: {
-						SockNodeName: "localhost",
-						SockServiceName: port.toString(),
-						SockPassive: true,
-					},
-				},
-				inetdCompatibility: {
-					Wait: false,
-				},
-				StandardErrorPath: errLogPath,
-			};
-			try {
-				app.doShellScript(`
-					set -o pipefail
-					mkdir -p '${plistDir}' &&
-					printf '%s' '${JSON.stringify(plistJson)}' |
-					plutil -convert xml1 -o '${plistPath}' -
-				`);
-				this.stop();
-				this.start();
-				return true;
-				app.displayAlert("Server updated.");
-			} catch (e) {
-				app.displayAlert("Error: " + e.message);
 				return false;
 			}
 		},
@@ -129,7 +55,7 @@ function pause() {
 function primeModal() {
 	const browser = config.get("browser");
 	const origin = config.get("origin");
-	const port = launchAgent.getPort();
+	const port = launchAgent.port();
 	const redirections = app
 		.doShellScript(
 			`/Applications/Photos\\ Server.app/Contents/MacOS/redirections ${origin.replace(/^.*\/\//, "")}||:`,
@@ -140,7 +66,7 @@ function primeModal() {
 		remove: {
 			label: "Remove the server",
 			action: () => {
-				launchAgent.remove();
+				launchAgent.stop();
 				pause("Removing server");
 				return true;
 			},
@@ -172,19 +98,10 @@ function primeModal() {
 		},
 	};
 
-	let list = [];
-	let status = "";
-	if (launchAgent.isRunning()) {
-		list = [choices.restart.label, choices.remove.label];
-		status = "Serving photos on localhost:" + port;
-	} else {
-		list = [choices.start.label];
-		status = launchAgent.isInstalled()
-			? "Server is stopped."
-			: "Server is not installed.";
-	}
-	status = `${status}
-
+	let list = launchAgent.isRunning()
+		? [choices.restart.label, choices.remove.label]
+		: [choices.start.label];
+	let status = `${launchAgent.status()}
 
 Links beginning with "${origin}"
 will open in Photos.
@@ -307,12 +224,11 @@ function portModal(errorMessage = "Select the port") {
 				: "Start Server",
 		});
 		if (port.buttonReturned === "OK") {
-			if (validPort(port.textReturned)) {
-				config.set("port", port.textReturned);
-				launchAgent.save(port.textReturned);
+			try {
+				launchAgent.start(port.textReturned);
 				pause("Starting server");
-			} else {
-				portModal(`${port.textReturned} is an invalid port.`);
+			} catch (e) {
+				portModal(e.message);
 			}
 		}
 	} catch {

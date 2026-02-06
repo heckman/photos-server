@@ -87,12 +87,14 @@ main() {
 			;;
 		status|'')
 			if is_server_running
-			then echo "Photos Server is running on port $(get_port)"
-			else echo "Photos Server is not running."
+			then echo "Server is running on port $(get_port)"
+			elif is_launch_agent_installed
+			then echo "Server is installed, but not running."
+			else echo "Server is not installed."
 			fi
 			;;
 		*)
-			eval "$1"; exit $?
+			# eval "$1"; exit $?
 			echo "Unknown command: $1" >&2
 			usage >&2
 			return 2
@@ -219,7 +221,9 @@ is_server_running() {
 	awk -v id="$LAUNCH_AGENT_LABEL" '$3==id{f=1;exit}END{exit !f}'
 }
 get_port() {
-	plutil -extract Sockets.Photos.SockServiceName raw "${LAUNCH_AGENT_PLIST}"
+	if is_launch_agent_installed
+	then plutil -extract Sockets.Photos.SockServiceName raw "${LAUNCH_AGENT_PLIST}"
+	fi
 }
 
 
