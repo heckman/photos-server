@@ -324,7 +324,7 @@ function run() {
 }
 
 function GURLGURL(url) {
-	config.get("origin");
+	const origin = config.get("origin");
 	if (url.startsWith(origin)) {
 		const urlPath = url.substring(origin.length);
 		app.doShellScript(`'${HANDLER}' '${urlPath}'`);
