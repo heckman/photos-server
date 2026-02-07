@@ -35,7 +35,7 @@ subs="${subs}s/127.0.0.1:/localhost:/;s/::1:/localhost:/;"
 # defined in the launchdaemon, then apply sub substitutions
 #
 # shellcheck disable=SC2046  # subshell output splits on whitespace
-/usr/bin/printf "IP4\n%s🠪%s\n\nIP6\n%s🠪%s\n" $(
+/usr/bin/printf "IP4:  %s 🠪 %s\n\nIP6:  %s 🠪 %s\n" $(
 	/bin/launchctl print "system/$daemon" |
 	/usr/bin/grep -- '->' |
 	/usr/bin/sed -E 's/^.* ([0-9.]+) port ([0-9]+) -> ([0-9.]+) port ([0-9]+)\\.* ([a-fA-F0-9:]+) port ([0-9]+) -> ([a-fA-F0-9:]+) port ([0-9]+)\\.*$/\1:\2 \3:\4 \5:\6 \7:\8/;'"${subs}"
