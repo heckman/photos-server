@@ -6,11 +6,13 @@ app.includeStandardAdditions = true;
 
 const scripts = {
 	urlHandler: (url) => ["/bin/dash", resourcePath("handler"), url],
-	controlPanel: () => [
+	controlPanel: (bid, path) => [
 		"/usr/bin/osascript",
 		"-l",
 		"JavaScript",
 		resourcePath("control-panel"),
+		bid,
+		path,
 	],
 };
 
@@ -18,7 +20,7 @@ function run() {
 	const bundle = $.NSBundle.mainBundle;
 	const bid = bundle.bundleIdentifier.js;
 	const path = bundle.bundlePath.js;
-	activateProcess(exec(...scripts.controlPanel(), bid, path));
+	activateProcess(exec(...scripts.controlPanel(bid, path)));
 }
 
 function GURLGURL(url) {
