@@ -3,17 +3,16 @@
 # except where otherwise noted
 # <https://github.com/heckman/photos-server>
 
-##
-##  serverctl
-##  version 0.4
-
+PROGRAM=serverctl
+VERSION=0.4
 
 
 APP_BID="ca.heckman.PhotosServer"
 
-HTTP_HANDLER="$(dirname "$(realpath "$0")")/handler"
-
 set -eu
+
+SELF="$(realpath "$0")"
+HTTP_HANDLER="$(dirname "$SELF")/handler"
 
 LAUNCH_AGENT_LABEL="$APP_BID.listener"
 LAUNCH_AGENT_DIR="$HOME/Library/LaunchAgents"
@@ -21,19 +20,20 @@ LAUNCH_AGENT_PLIST="$LAUNCH_AGENT_DIR/$LAUNCH_AGENT_LABEL.plist"
 
 usage() {
 	echo "
-Usage: serverctl start [port]
-       serverctl [status|stop|port|test]
+Usage: $PROGRAM start [port]
+       $PROGRAM [stop|status|port|test]
+       $PROGRAM defaults [origin|browser|port] [VALUE]
 
-Controls the server installed by the Photos Server application.
+Controls the server and settings for the Photos Server application.
 
 Commands:
 
     start [port]  If the server is already running, restarts it, otherwise,
                   installs a startup item to the User's Library, and starts
-		  the server. If a port is specified, it must be an integer
-		  between 1024 and 65535 and it must not be 5000 or 7000. The
-		  port setting will be saved in the User's preferences, whence
-		  it will be read if the port is not specified.
+                  the server. If a port is specified, it must be an integer
+                  between 1024 and 65535 and it must not be 5000 or 7000. The
+                  port setting will be saved in the User's preferences, whence
+                  it will be read if the port is not specified.
 
     stop          Stops the server, and uninstalls the startup item.
 
@@ -42,70 +42,105 @@ Commands:
     port          Prints the port the server is listening on.
 
     test          Tests whether the server is running. Returns a non-zero exit
-		  code if the server is not running. Produces no output.
+                  code if the server is not running. Produces no output.
 
+    defaults      Prints the current values of the settings, in json format.
+
+    defaults [origin|browser|port]
+
+                  Prints the current value of the specified setting.
+
+    defaults [origin|browser|port] VALUE
+
+                  Sets the default value for the specified setting. Note that
+                  the port value will not be used until the next time the server
+                  is started. The other two settings are effective immediately.
+
+		  Note that when the origin in set, it will be given a scheme of
+		  http://, in place of any that may have been provided.
 "
 }
+version() { echo "$PROGRAM v$VERSION"; }
 
 main() {
 	case "${1-}" in
-		-h|-help|--help|help) usage;;
-		start|restart|enable|install)
-			test -z "${2-}" || validate_port "$2"
-			if is_server_running
-			then
-				echo "Restarting Photos Server..."
-				stop_server
-			else
-				echo "Starting Photos Server..."
+	-h|-help|--help|help) usage;;
+	-v|-version|--version|version) version;;
+	start|restart|enable|install)
+		local port=
+		test -z "${2-}" || port="$(validate_port "$2")"
+		if is_server_running
+		then
+			echo "Restarting Photos Server..."
+			stop_server
+		else
+			echo "Starting Photos Server..."
+		fi
+		install_launch_agent "$port"
+		start_server
+		echo "Photos Server started on port $(get_port)"
+		;;
+	stop|remove|disable|uninstall) if is_server_running
+		then
+			echo "Stopping Photos Server..."
+			stop_server
+		else
+			echo "Photos Server is not running."
+		fi
+		if is_launch_agent_installed
+		then
+			echo "Removing launch agent..."
+			remove_launch_agent
+			echo "Launch agent has been removed."
+		else
+			echo "Launch agent is not installed."
+		fi
+		;;
+	port)
+		get_port
+		;;
+	test|is-running)
+		is_server_running
+		;;
+	status|'')
+		if is_server_running
+		then echo "Server is running on port $(get_port)"
+		elif is_launch_agent_installed
+		then echo "Server is installed, but not running."
+		else echo "Server is not installed."
+		fi
+		;;
+	default|defaults)
+		case "${2-}" in
+		'') print_defaults;;
+		browser|origin|port)
+			if test -z "${3-}"
+			then print_default "$2"
+			else set_default "$2" "$3"
 			fi
-			install_launch_agent "${2-}"
-			start_server
-			echo "Photos Server started on port $(get_port)"
 			;;
-		stop|remove|disable|uninstall) if is_server_running
-			then
-				echo "Stopping Photos Server..."
-				stop_server
-			else
-				echo "Photos Server is not running."
-			fi
-			if is_launch_agent_installed
-			then
-				echo "Removing launch agent..."
-				remove_launch_agent
-				echo "Launch agent has been removed."
-			else
-				echo "Launch agent is not installed."
-			fi
-			;;
-		port)
-			get_port
-			;;
-		test|is-running)
-			is_server_running
-			;;
-		status|'')
-			if is_server_running
-			then echo "Server is running on port $(get_port)"
-			elif is_launch_agent_installed
-			then echo "Server is installed, but not running."
-			else echo "Server is not installed."
-			fi
-			;;
-		*)
-			# eval "$1"; exit $?
-			echo "Unknown command: $1" >&2
-			usage >&2
-			return 2
-			;;
+		*) err USAGE "Invalid default argument: $2";;
+		esac
+		;;
+	function)
+		shift
+		if type "${1-}" | grep -qF 'function'
+		then "$@"
+		else err USAGE "Unknown function: $1"
+		fi
+		;;
+	*)
+		# eval "$1"; exit $?
+		err USAGE "Unknown command: "
+		;;
 	esac
 }
 
 err() {
-
-
 	case "$1" in
+	USAGE)
+		echo "$2"
+		return 2;;
 	PORT_NOT_SET) echo "Port number not set."
 		return 72;;
 	PORT_NOT_NUMBER) echo "'$2' is an invalid port number; it must be a positive integer."
@@ -136,6 +171,10 @@ err() {
 		return 85;;
 	ALREADY_RUNNING) echo "Photos Server is already running."
 		return 86;;
+	INVALID_ORIGIN) echo "Invalid origin: $2"
+		return 87;;
+	INVALID_BROWSER) echo "'$2' is not a valid browser. Available browsers: $3."
+		return 88;;
 	*) echo "Unknown error: $1"
 		return "$1";;
 	esac >&2;
@@ -145,16 +184,16 @@ pause() { :;}
 
 validate_port() { local port="$1"
 	test -n "$port" || err PORT_NOT_SET
-	case "$port" in *[!0-9]*|0)
+	case "$port" in *[!0-9]*)
 		err PORT_NOT_NUMBER "$port";;
 	esac
 	test "$port" -le 65535 || err PORT_TOO_HIGH "$port"
 	test "$port" -ge 1024 || err PORT_TOO_LOW "$port"
 	test "$port" -ne 5000 -a "$port" -ne 7000 || err PORT_RESERVED "$port"
-	return 0
+	echo "${port#"${port%%[!0]*}"}" # remove leading zeros
 }
 
-write_launch_agent_plist(){ local port="${1#"${1%%[!0]*}"}"
+write_launch_agent_plist(){ local port="$1"
 	mkdir -p "$LAUNCH_AGENT_DIR" || err CANT_MKDIR "$LAUNCH_AGENT_DIR"
 	{
 		plutil -convert xml1 -o "$LAUNCH_AGENT_PLIST" - <<-EOF
@@ -177,7 +216,7 @@ write_launch_agent_plist(){ local port="${1#"${1%%[!0]*}"}"
 	} || err CANT_WRITE_PLIST "$LAUNCH_AGENT_PLIST"
 }
 
-install_launch_agent(){ local port="${1-}"
+install_launch_agent(){ local port="$1"
 	if test -n "$port"
 	then
 		write_launch_agent_plist "$port"
@@ -186,7 +225,7 @@ install_launch_agent(){ local port="${1-}"
 	else
 		port="$(defaults read "$APP_BID" port 2>/dev/null)" ||
 			err CANT_READ_DEFAULTS port
-		validate_port "$port"
+		validate_port "$port" # just in case a bad value got in somehow
 		write_launch_agent_plist "$port"
 	fi
 }
@@ -198,7 +237,7 @@ remove_launch_agent(){
 
 start_server() {
 	is_launch_agent_installed || err LAUNCH_AGENT_NOT_INSTALLED
-	! is_server_running || err ALLREADY_RUNNING
+	! is_server_running || err ALREADY_RUNNING
 	launchctl bootstrap "gui/$(id -u)" "${LAUNCH_AGENT_PLIST}" ||
 		err CANT_START_SERVER
 	pause
@@ -225,7 +264,74 @@ get_port() {
 	then plutil -extract Sockets.Photos.SockServiceName raw "${LAUNCH_AGENT_PLIST}"
 	fi
 }
+print_defaults() {
+	defaults read "$APP_BID" 2>/dev/null
+}
+print_default() { local default="$1"
+	defaults read "$APP_BID" "$default" 2>/dev/null
+}
+set_default() { local default="$1" value="$2"
+	case "$default" in
+	browser) value="$(validate_browser "$value")";;
+	origin) value="$(validate_origin "$value")";;
+	port) value="$(validate_port "$value")";;
+	esac
+	defaults write "$APP_BID" "$default" "$value" 2>/dev/null ||
+		err CANT_WRITE_DEFAULTS "$default" "$value"
+}
+validate_origin() { local origin="${1#*://}" # strip scheme
+	case "$origin" in
+	*[!a-zA-Z0-9.:-]*|*:*[!0-9]) err INVALID_ORIGIN "$1";;
+	esac
+	echo "http://$origin"
 
-
+}
+validate_browser() { local browser="$1"
+	local valid_browsers
+	# shellcheck disable=SC2016  # the jxa script must not suffer expansion
+	valid_browsers="$(/usr/bin/osascript -l JavaScript -e 'ObjC.import("AppKit");
+        const appURLs =
+                $.NSWorkspace.sharedWorkspace.URLsForApplicationsToOpenURL(
+                        $.NSURL.URLWithString($("https://apple.com")),
+                );
+        appURLs.js
+                .map((url) => {
+                        const name =
+                                $.NSFileManager.defaultManager.displayNameAtPath(
+                                        url.path,
+                                );
+                        // Force a native JS string primitive
+                        return String(ObjC.unwrap(name));
+                })
+                .filter((name) => name !== "Photos Server");
+')"
+	case "$valid_browsers" in
+	"$browser,"*|*", $browser"|*", $browser,"*) echo "$browser";;
+	*) err INVALID_BROWSER "$1" "$valid_browsers";;
+	esac
+}
+selfcheck_err_codes() {
+	# this self-check doesn't respect comments
+	awk '
+		/^err()/,/^}/{
+			if(/^[[:space:]]*[A-Z_]+\)/) {
+				sub(/\)/,"")
+				defined[$1]=1
+				unused[$1]=1
+			}
+		}
+		match($0,/err [A-Z_]+/){
+			$0=(substr($0,RSTART))
+			used[$2]=$0
+		}
+		END{
+			for(err in used)
+				if(!defined[err])missing[err]=1
+				else delete unused[err]
+			for(err in unused)print("unused: "err)
+			for(err in missing)print("undefined: "err)
+		}
+	' "$SELF" | grep . && return 1 || return 0
+}
 main "$@"
 
