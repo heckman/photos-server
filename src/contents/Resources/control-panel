@@ -18,13 +18,16 @@ function run(args) {
 	env.init({ bundlePath: args[1] });
 	launchAgent.init(resource("serverctl"));
 
-	config.init(args[0], {
-		origin: "http://photos.local",
-		browser: "Safari",
-		port: "6330",
-	});
+	config.init(args[0], readPlist(resource("defaults.plist")));
 	primeModal();
 }
+
+function readPlist(plistFile) {
+	return ObjC.deepUnwrap(
+		$.NSDictionary.dictionaryWithContentsOfFile(plistFile),
+	);
+}
+
 const env = (() => {
 	const environment = {};
 	return {
@@ -116,8 +119,8 @@ function primeModal() {
 			label: "Visit Photos Server homepage and close",
 			action: () => {
 				pause("Opening homepage...");
-				app.doShellScript(
-					`open -a "${browser}" https://github.com/heckman/photos-server`,
+				$.NSWorkspace.sharedWorkspace.openFile(
+					resource("homepage.webloc"),
 				);
 				return false;
 			},
@@ -263,3 +266,7 @@ const config = (() => {
 		set: (key, value) => d.setObjectForKey($(value), key),
 	};
 })();
+
+function openURL(url) {
+	$.NSWorkspace.sharedWorkspace.openURL($.NSURL.URLWithString(url));
+}
