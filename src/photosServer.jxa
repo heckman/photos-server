@@ -1,6 +1,9 @@
 ObjC.import("Foundation");
 ObjC.import("AppKit");
 
+const app = Application.currentApplication();
+app.includeStandardAdditions = true;
+
 const scripts = {
 	urlHandler: (url) => ["/bin/dash", resourcePath("handler"), url],
 	controlPanel: () => [
@@ -12,7 +15,10 @@ const scripts = {
 };
 
 function run() {
-	activateProcess(exec(...scripts.controlPanel()));
+	const bundle = $.NSBundle.mainBundle;
+	const bid = bundle.bundleIdentifier.js;
+	const path = bundle.bundlePath.js;
+	activateProcess(exec(...scripts.controlPanel(), bid, path));
 }
 
 function GURLGURL(url) {

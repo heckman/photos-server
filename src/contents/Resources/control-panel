@@ -10,9 +10,36 @@
 
 ObjC.import("AppKit");
 
-const bid = "ca.heckman.PhotosServer";
 const app = Application.currentApplication();
 app.includeStandardAdditions = true;
+
+function run(args) {
+	// this is a little awkward, but it's working
+	env.init({ bundlePath: args[1] });
+	launchAgent.init(resource("serverctl"));
+
+	config.init(args[0], {
+		origin: "http://photos.local",
+		browser: "Safari",
+		port: "6330",
+	});
+	primeModal();
+}
+const env = (() => {
+	const environment = {};
+	return {
+		init: (values) => {
+			Object.keys(values).forEach(
+				(key) => (environment[key] = values[key]),
+			);
+		},
+		get: (key) => environment[key],
+		set: (key, value) => (environment[key] = value),
+	};
+})();
+function resource(name) {
+	return env.get("bundlePath") + "/Contents/Resources/" + name;
+}
 
 const launchAgent = (() => {
 	// Get the URL to the main executable in the MacOS folder
@@ -20,9 +47,10 @@ const launchAgent = (() => {
 	// 	$.NSBundle.mainBundle.executableURL.URLByDeletingLastPathComponent.URLByAppendingPathComponent(
 	// 		"serverctl",
 	// 	).path.js;
-	const serverctl =
-		"/Applications/Photos Server.app/Contents/Resources/serverctl";
 	return {
+		init: (script) => {
+			serverctl = script;
+		},
 		status: () => app.doShellScript(`'${serverctl}' status`),
 		start: (port) =>
 			app.doShellScript(`'${serverctl}' start ${port}`),
@@ -39,8 +67,17 @@ const launchAgent = (() => {
 	};
 })();
 
-function pause() {
-	delay(0.2);
+function pause(message) {
+	return infobox(message, 1.5);
+}
+function infobox(message, timeout = 0) {
+	app.displayDialog(message, {
+		withTitle: "Photos Server",
+		withIcon: Path(resource("AppIcon.icns")),
+		givingUpAfter: timeout, // Dismisses after 1 second
+		buttons: ["Dismiss"],
+		defaultButton: "Dismiss",
+	});
 }
 
 function primeModal() {
@@ -49,7 +86,7 @@ function primeModal() {
 	const port = launchAgent.port();
 	const redirections = app
 		.doShellScript(
-			`/Applications/Photos\\ Server.app/Contents/MacOS/redirections ${origin.replace(/^.*\/\//, "")}||:`,
+			`${resource("redirections")} ${origin.replace(/^.*\/\//, "")}||:`,
 		)
 		.trim();
 	const choices = {
@@ -78,9 +115,7 @@ function primeModal() {
 		homepage: {
 			label: "Visit Photos Server homepage and close",
 			action: () => {
-				app.displayAlert("Opening homepage...", {
-					givingUpAfter: 1,
-				});
+				pause("Opening homepage...");
 				app.doShellScript(
 					`open -a "${browser}" https://github.com/heckman/photos-server`,
 				);
@@ -106,7 +141,7 @@ Everything else will open in ${browser}.`;
 	list = [...list, choices.homepage.label];
 
 	const choice = app.chooseFromList(list, {
-		withTitle: "Photos Server\nControl Panel",
+		withTitle: "Photos Server Control",
 		withPrompt: status,
 		defaultItems: [],
 		okButtonName: "Select",
@@ -124,14 +159,11 @@ Everything else will open in ${browser}.`;
 }
 
 function redirectionsModal(redirections) {
-	app.displayAlert(
+	infobox(
 		redirections
-			? "Configured redirections\n(Not necessarily enabled)"
+			? "These redirections are configured, but not necessarily enabled.\n\n" +
+					redirections
 			: "No redirections configured",
-		{
-			as: "informational",
-			message: redirections,
-		},
 	);
 	return true;
 }
@@ -176,8 +208,8 @@ function browserList() {
 }
 function browserModal() {
 	const browser = app.chooseFromList(browserList(), {
-		withTitle: "Photos Server: Select Default Browser",
-		withPrompt: "Pick one",
+		withTitle: "Photos Server Preferences",
+		withPrompt: "Select Default Browser",
 		defaultItems: [config.get("browser")],
 		okButtonName: "Select",
 		cancelButtonName: "Cancel",
@@ -215,24 +247,18 @@ function portModal(errorMessage = "Select the port") {
 	}
 	return true;
 }
-function run() {
-	config.init({
-		origin: "http://photos.local",
-		browser: "Safari",
-		port: "6330",
-	});
-	primeModal();
-}
 
 const config = (() => {
-	const d = $.NSUserDefaults.alloc.initWithSuiteName(bid);
+	let d;
 	// ensure all defaults have persistent values
 	return {
-		init: (defaults) =>
+		init: (bid, defaults) => {
+			d = $.NSUserDefaults.alloc.initWithSuiteName(bid);
 			Object.keys(defaults).forEach((key) => {
 				if (d.objectForKey(key).isNil())
 					d.setObjectForKey($(defaults[key]), key);
-			}),
+			});
+		},
 		get: (key) => d.objectForKey(key).js,
 		set: (key, value) => d.setObjectForKey($(value), key),
 	};
