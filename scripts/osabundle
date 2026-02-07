@@ -106,6 +106,7 @@ copy_contents(){
 	local contents
 	if contents="$(get_path .contents)"
 	then
+		xattr -cr "$contents"
 		ditto "$contents" "$target/Contents" ||
 			return "$(err CANT_COPY_CONTENTS "$contents")"
 	fi
