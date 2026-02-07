@@ -45,11 +45,7 @@ function resource(name) {
 }
 
 const launchAgent = (() => {
-	// Get the URL to the main executable in the MacOS folder
-	// const serverctl =
-	// 	$.NSBundle.mainBundle.executableURL.URLByDeletingLastPathComponent.URLByAppendingPathComponent(
-	// 		"serverctl",
-	// 	).path.js;
+	// This needs some tidying up
 	return {
 		init: (script) => {
 			serverctl = script;

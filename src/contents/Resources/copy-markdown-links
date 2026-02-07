@@ -113,7 +113,7 @@ function run(args) {
 			givingUpAfter: 5,
 		});
 	} catch (e) {
-		if (e.errorNumber != -128) {
+		if (e.errorNumber != -128) { // -128 is the Cancel button
 			throw e;
 		}
 	} finally {
