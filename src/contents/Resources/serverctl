@@ -12,7 +12,10 @@ APP_BID="ca.heckman.PhotosServer"
 set -eu
 
 SELF="$(realpath "$0")"
-HTTP_HANDLER="$(dirname "$SELF")/handler"
+
+RESOURCES="$(dirname "$SELF")"
+HTTP_HANDLER="$RESOURCES/Photos Server"
+DEFAULT_SETTINGS_PLIST="$RESOURCES/defaults.plist"
 
 LAUNCH_AGENT_LABEL="$APP_BID.listener"
 LAUNCH_AGENT_DIR="$HOME/Library/LaunchAgents"
@@ -130,8 +133,7 @@ main() {
 		fi
 		;;
 	*)
-		# eval "$1"; exit $?
-		err USAGE "Unknown command: "
+		err USAGE "Unknown command: $1"
 		;;
 	esac
 }
@@ -223,7 +225,7 @@ install_launch_agent(){ local port="$1"
 		defaults write "$APP_BID" port "$port" 2>/dev/null ||
 			err CANT_WRITE_DEFAULTS port "$port"
 	else
-		port="$(defaults read "$APP_BID" port 2>/dev/null)" ||
+		port="$(print_default port | grep .)" ||
 			err CANT_READ_DEFAULTS port
 		validate_port "$port" # just in case a bad value got in somehow
 		write_launch_agent_plist "$port"
@@ -265,10 +267,12 @@ get_port() {
 	fi
 }
 print_defaults() {
-	defaults read "$APP_BID" 2>/dev/null
+	defaults read "$APP_BID" 2>/dev/null ||
+	plutil -convert json -o - "${DEFAULT_SETTINGS_PLIST}"
 }
 print_default() { local default="$1"
-	defaults read "$APP_BID" "$default" 2>/dev/null
+	defaults read "$APP_BID" "$default" 2>/dev/null ||
+	plutil -extract "$default" raw "${DEFAULT_SETTINGS_PLIST}"
 }
 set_default() { local default="$1" value="$2"
 	case "$default" in

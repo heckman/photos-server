@@ -8,48 +8,87 @@
 //
 //
 
+// required resources, relative to the Resources folder
+const resources = {
+	cli: ["serverctl"],
+	icon: ["AppIcon", "icns"],
+	defaults: ["defaults", "plist"],
+	homepage: ["homepage", "webloc"],
+	redirections: ["redirections"],
+};
+
 ObjC.import("AppKit");
 
 const app = Application.currentApplication();
 app.includeStandardAdditions = true;
 
-function run(args) {
-	// this is a little awkward, but it's working
-	env.init({ bundlePath: args[1] });
-	launchAgent.init(resource("serverctl"));
+const bundle = $.NSBundle.bundleWithPath(
+	// .stringByDeletingLastPathComponent // Scripts
+	$.NSProcessInfo.processInfo.arguments.objectAtIndex(3)
+		.stringByDeletingLastPathComponent // Resources
+		.stringByDeletingLastPathComponent // Contents
+		.stringByDeletingLastPathComponent, // My.app
+);
+if (bundle.isNil()) throw new Error("Bundle Not Found");
 
-	config.init(args[0], readPlist(resource("defaults.plist")));
-	primeModal();
-}
-
-function readPlist(plistFile) {
-	return ObjC.deepUnwrap(
-		$.NSDictionary.dictionaryWithContentsOfFile(plistFile),
-	);
-}
-
-const env = (() => {
-	const environment = {};
-	return {
-		init: (values) => {
-			Object.keys(values).forEach(
-				(key) => (environment[key] = values[key]),
+const resource = ((bundle) => {
+	return (name, ext = $()) => {
+		const filename = resources[name] || [name];
+		const path = ((name, ext = $()) =>
+			bundle.pathForResourceOfType(name, ext))(...filename);
+		if (path.isNil()) {
+			throw new Error(
+				`Resource Not Found: '${name}' is not in '${bundle.bundlePath.js}/Contents/Resources'`,
 			);
-		},
-		get: (key) => environment[key],
-		set: (key, value) => (environment[key] = value),
+		}
+		return path.js;
 	};
-})();
-function resource(name) {
-	return env.get("bundlePath") + "/Contents/Resources/" + name;
-}
+})(bundle);
 
-const launchAgent = (() => {
-	// This needs some tidying up
+/**
+ * A wrapper to set and get user defaults.
+ * It lazily registers fallback values from the given plist file.
+ *
+ * @typedef {Object} ConfigManager
+ * @property {function(string): any} get - Retrieves and unwraps a value from defaults.
+ * @property {function(string, any): void} set - Wraps and saves a value to defaults.
+ *
+ * @type {ConfigManager}
+ * @param {$.NSBundle} bundle - The bundle to use for settings.
+ * @param {string} fallbackPlistPath - The path to the plist file.
+ */
+const config = ((defaults, fallbackPlistPath) => {
+	let fallbacksExhausted = !fallbackPlistPath;
+	function registerFallbacks() {
+		defaults.registerDefaults(
+			$.NSDictionary.dictionaryWithContentsOfFile(
+				fallbackPlistPath,
+			),
+		);
+		fallbacksExhausted = true;
+	}
 	return {
-		init: (script) => {
-			serverctl = script;
+		get: (key) => {
+			let value = defaults.objectForKey(key);
+			if (value.isNil()) {
+				if (fallbacksExhausted) return null;
+				registerFallbacks();
+				value = defaults.objectForKey(key);
+				if (value.isNil()) return null;
+			}
+			return ObjC.deepUnwrap(value);
 		},
+		set: (key, value) => {
+			defaults.setObjectForKey($(value), key);
+		},
+	};
+})(
+	$.NSUserDefaults.alloc.initWithSuiteName(bundle.bundleIdentifier),
+	resource("defaults"),
+);
+
+const launchAgent = ((serverctl) => {
+	return {
 		status: () => app.doShellScript(`'${serverctl}' status`),
 		start: (port) =>
 			app.doShellScript(`'${serverctl}' start ${port}`),
@@ -64,7 +103,17 @@ const launchAgent = (() => {
 			}
 		},
 	};
-})();
+})(resource("cli"));
+
+function run(args) {
+	primeModal();
+}
+
+function readPlist(plistFile) {
+	return ObjC.deepUnwrap(
+		$.NSDictionary.dictionaryWithContentsOfFile(plistFile),
+	);
+}
 
 function pause(message) {
 	return infobox(message, 1.5);
@@ -72,7 +121,7 @@ function pause(message) {
 function infobox(message, timeout = 0) {
 	app.displayDialog(message, {
 		withTitle: "Photos Server",
-		withIcon: Path(resource("AppIcon.icns")),
+		withIcon: Path(resource("icon")),
 		givingUpAfter: timeout, // Dismisses after 1 second
 		buttons: ["Dismiss"],
 		defaultButton: "Dismiss",
@@ -116,7 +165,7 @@ function primeModal() {
 			action: () => {
 				pause("Opening homepage...");
 				$.NSWorkspace.sharedWorkspace.openFile(
-					resource("homepage.webloc"),
+					resource("homepage"),
 				);
 				return false;
 			},
@@ -246,22 +295,6 @@ function portModal(errorMessage = "Select the port") {
 	}
 	return true;
 }
-
-const config = (() => {
-	let d;
-	// ensure all defaults have persistent values
-	return {
-		init: (bid, defaults) => {
-			d = $.NSUserDefaults.alloc.initWithSuiteName(bid);
-			Object.keys(defaults).forEach((key) => {
-				if (d.objectForKey(key).isNil())
-					d.setObjectForKey($(defaults[key]), key);
-			});
-		},
-		get: (key) => d.objectForKey(key).js,
-		set: (key, value) => d.setObjectForKey($(value), key),
-	};
-})();
 
 function openURL(url) {
 	$.NSWorkspace.sharedWorkspace.openURL($.NSURL.URLWithString(url));

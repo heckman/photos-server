@@ -5,34 +5,32 @@ const app = Application.currentApplication();
 app.includeStandardAdditions = true;
 
 const scripts = {
-	urlHandler: (url) => ["/bin/dash", resourcePath("handler"), url],
-	controlPanel: (bid, path) => [
+	urlHandler: (url) => [
+		"/bin/dash",
+		resourcePath("Photos Server"),
+		url,
+	],
+	controlPanel: () => [
 		"/usr/bin/osascript",
 		"-l",
 		"JavaScript",
 		resourcePath("control-panel"),
-		bid,
-		path,
 	],
 };
 
 function run() {
-	const bundle = $.NSBundle.mainBundle;
-	const bid = bundle.bundleIdentifier.js;
-	const path = bundle.bundlePath.js;
-	activateProcess(exec(...scripts.controlPanel(bid, path)));
+	activateProcess(exec(...scripts.controlPanel()));
 }
 
 function GURLGURL(url) {
-	const preferences = $.NSUserDefaults.standardUserDefaults;
-	if (url.startsWith(preferences.objectForKey("origin").js))
+	if (url.startsWith(config.get("origin")))
 		return system(...scripts.urlHandler(url)) == 0;
-	else launchAppWithUrl(preferences.objectForKey("browser").js, url);
+	else launchAppWithUrl(config.get("browser"), url);
 	return true;
 }
 
-function resourcePath(name) {
-	return $.NSBundle.mainBundle.pathForResourceOfType(name, $()).js;
+function resourcePath(name, ext = $()) {
+	return $.NSBundle.mainBundle.pathForResourceOfType(name, ext).js;
 }
 
 function exec(bin, ...args) {
@@ -79,3 +77,33 @@ function launchAppWithUrl(appName, url) {
 		$(), // No completion handler needed
 	);
 }
+
+const config = ((defaults, fallbackPlistPath) => {
+	let fallbacksExhausted = !fallbackPlistPath;
+	function registerFallbacks() {
+		defaults.registerDefaults(
+			$.NSDictionary.dictionaryWithContentsOfFile(
+				fallbackPlistPath,
+			),
+		);
+		fallbacksExhausted = true;
+	}
+	return {
+		get: (key) => {
+			let value = defaults.objectForKey(key);
+			if (value.isNil()) {
+				if (fallbacksExhausted) return null;
+				registerFallbacks();
+				value = defaults.objectForKey(key);
+				if (value.isNil()) return null;
+			}
+			return ObjC.deepUnwrap(value);
+		},
+		set: (key, value) => {
+			defaults.setObjectForKey($(value), key);
+		},
+	};
+})(
+	$.NSUserDefaults.standardUserDefaults,
+	resourcePath("defaults.plist"),
+);
