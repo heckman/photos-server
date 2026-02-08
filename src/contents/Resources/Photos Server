@@ -41,6 +41,7 @@ TEMP_DIR=
 # $1: optional raw encoded url path to open, otherwise
 # &1< raw HTTP request
 main(){
+	log debug "args: $*"
 	if test $# -eq 0
 	then handle_http_request
 	else open_url "$1"
