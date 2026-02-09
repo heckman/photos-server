@@ -3,119 +3,142 @@ ObjC.import("AppKit");
 
 const app = Application.currentApplication();
 app.includeStandardAdditions = true;
-
-const resources = {
-	defaults: () => resource("defaults", { extension: "plist" }),
-	handler: () => resource("Photos Server", { directory: "Scripts" }),
-	gui: () => resource("control-panel", { directory: "Scripts" }),
-};
-const tasks = {
-	urlHandler: (url) => task("/bin/dash", resources.handler(), url),
-	controlPanel: () =>
-		task("/usr/bin/osascript", "-l", "JavaScript", resources.gui()),
-};
-
-function run() {
-	activateProcess(tasks.controlPanel().processIdentifier);
-}
-
-function GURLGURL(url) {
-	return url.startsWith(config.get("origin"))
-		? exitedCleanly(tasks.urlHandler(url))
-		: openURLsWithAppBundleIdentifier(
-				[url],
-				bundleIdentifierForApp(config.get("browser")),
-			);
-}
-
-function exitedCleanly(task) {
-	task.waitUntilExit();
-	return task.terminationStatus === 0;
-}
-
-const resource = ((bundle) =>
-	function (name, options = {}) {
-		const path = bundle.pathForResourceOfTypeInDirectory(
-			name,
-			options?.extension || $(),
-			options?.directory || $(),
-		);
-		if (path.isNil()) {
-			throw new Error(
-				`Resource Not Found: '${
-					name + options?.extension
-						? "." + options?.extension
-						: ""
-				}' is not in '${
-					bundle.bundlePath.js
-				}/Contents/Resources/${options?.directory || ""} '`,
-			);
-		}
-		return path.js;
-	})($.NSBundle.mainBundle);
-
-function task(bin, ...args) {
-	const t = $.NSTask.alloc.init;
-	t.executableURL = $.NSURL.fileURLWithPath(bin);
-	t.arguments = args;
-	let error = $();
-	// launch and detach the task
-	if (!t.launchAndReturnError(error))
-		throw new Error(error.localizedDescription.js);
-	return t;
-}
-
-function activateProcess(pid, wait = 0.25) {
-	delay(wait);
-	const bgApp =
-		$.NSRunningApplication.runningApplicationWithProcessIdentifier(
-			pid,
-		);
-	if (bgApp && !bgApp.isNil()) {
-		return bgApp.activateWithOptions(2);
-	}
-	return false;
-}
-function openURLsWithAppBundleIdentifier(urls, bundleIdentifier) {
-	return $.NSWorkspace.sharedWorkspace.openURLsWithAppBundleIdentifierOptionsAdditionalEventParamDescriptorLaunchIdentifiers(
-		$(urls.map((u) => $.NSURL.URLWithString(u))),
-		bundleIdentifier,
-		$.NSWorkspaceLaunchDefault,
-		$.NSAppleEventDescriptor.nullDescriptor,
-		null,
-	);
-}
-// returns an ObjC string
-function bundleIdentifierForApp(name) {
-	const appPath =
-		$.NSWorkspace.sharedWorkspace.fullPathForApplication(name);
-	if (appPath.isNil()) throw new Error("App not found: " + name);
-	return $.NSBundle.bundleWithPath(appPath).bundleIdentifier;
-}
-
-const config = ((defaults, fallbackPlistPath) => {
-	let fallbacksExhausted = !fallbackPlistPath;
-	function registerFallbacks() {
-		defaults.registerDefaults(
-			$.NSDictionary.dictionaryWithContentsOfFile(
-				fallbackPlistPath,
-			),
-		);
-		fallbacksExhausted = true;
-	}
-	return {
-		get: (key) => {
-			let value = defaults.objectForKey(key);
-			if (value.isNil()) {
-				if (fallbacksExhausted) return null;
-				registerFallbacks();
-				value = defaults.objectForKey(key);
-				if (value.isNil()) return null;
-			}
-			return ObjC.deepUnwrap(value);
-		},
-		set: (key, value) => {
-			defaults.setObjectForKey($(value), key);
-		},
+try {
+	const resources = {
+		defaults: () => resource("defaults", { extension: "plist" }),
+		handler: () =>
+			resource("Photos Server", { directory: "Scripts" }),
+		gui: () => resource("control-panel", { directory: "Scripts" }),
 	};
-})($.NSUserDefaults.standardUserDefaults, resources.defaults());
+	const tasks = {
+		urlHandler: (url) =>
+			task("/bin/dash", resources.handler(), url),
+		controlPanel: () =>
+			task(
+				"/usr/bin/osascript",
+				"-l",
+				"JavaScript",
+				resources.gui(),
+			),
+	};
+
+	function run() {
+		activateProcess(tasks.controlPanel().processIdentifier);
+	}
+
+	function GURLGURL(url) {
+		return url.startsWith(config.get("origin"))
+			? exitedCleanly(tasks.urlHandler(url))
+			: openNsUrlsWithAppBundleIdentifier(
+					$([$.NSURL.URLWithString(url)]),
+					bundleIdentifierForApp(config.get("browser")),
+				);
+	}
+	function openDocuments(files) {
+		return openNsUrlsWithAppBundleIdentifier(
+			$(
+				files.map((file) =>
+					$.NSURL.fileURLWithPath(file.toString()),
+				),
+			),
+			bundleIdentifierForApp(config.get("browser")),
+		);
+	}
+
+	function exitedCleanly(task) {
+		task.waitUntilExit();
+		return task.terminationStatus === 0;
+	}
+
+	const resource = ((bundle) =>
+		function (name, options = {}) {
+			const path = bundle.pathForResourceOfTypeInDirectory(
+				name,
+				options?.extension || $(),
+				options?.directory || $(),
+			);
+			if (path.isNil()) {
+				throw new Error(
+					`Resource Not Found: '${
+						name + options?.extension
+							? "." + options?.extension
+							: ""
+					}' is not in '${
+						bundle.bundlePath.js
+					}/Contents/Resources/${options?.directory || ""} '`,
+				);
+			}
+			return path.js;
+		})($.NSBundle.mainBundle);
+
+	function task(bin, ...args) {
+		const t = $.NSTask.alloc.init;
+		t.executableURL = $.NSURL.fileURLWithPath(bin);
+		t.arguments = args;
+		let error = $();
+		// launch and detach the task
+		if (!t.launchAndReturnError(error))
+			throw new Error(error.localizedDescription.js);
+		return t;
+	}
+
+	function activateProcess(pid, wait = 0.25) {
+		delay(wait);
+		const bgApp =
+			$.NSRunningApplication.runningApplicationWithProcessIdentifier(
+				pid,
+			);
+		if (bgApp && !bgApp.isNil()) {
+			return bgApp.activateWithOptions(2);
+		}
+		return false;
+	}
+	function openNsUrlsWithAppBundleIdentifier(
+		nsUrlArray,
+		bundleIdentifier,
+	) {
+		return $.NSWorkspace.sharedWorkspace.openURLsWithAppBundleIdentifierOptionsAdditionalEventParamDescriptorLaunchIdentifiers(
+			nsUrlArray,
+			bundleIdentifier,
+			$.NSWorkspaceLaunchDefault,
+			$.NSAppleEventDescriptor.nullDescriptor,
+			null,
+		);
+	}
+	// returns an ObjC string
+	function bundleIdentifierForApp(name) {
+		const appPath =
+			$.NSWorkspace.sharedWorkspace.fullPathForApplication(name);
+		if (appPath.isNil()) throw new Error("App not found: " + name);
+		return $.NSBundle.bundleWithPath(appPath).bundleIdentifier;
+	}
+
+	const config = ((defaults, fallbackPlistPath) => {
+		let fallbacksExhausted = !fallbackPlistPath;
+		function registerFallbacks() {
+			defaults.registerDefaults(
+				$.NSDictionary.dictionaryWithContentsOfFile(
+					fallbackPlistPath,
+				),
+			);
+			fallbacksExhausted = true;
+		}
+		return {
+			get: (key) => {
+				let value = defaults.objectForKey(key);
+				if (value.isNil()) {
+					if (fallbacksExhausted) return null;
+					registerFallbacks();
+					value = defaults.objectForKey(key);
+					if (value.isNil()) return null;
+				}
+				return ObjC.deepUnwrap(value);
+			},
+			set: (key, value) => {
+				defaults.setObjectForKey($(value), key);
+			},
+		};
+	})($.NSUserDefaults.standardUserDefaults, resources.defaults());
+} catch (e) {
+	app.displatAlert(JSON.stringify(e));
+}
