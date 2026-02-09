@@ -94,6 +94,8 @@ main(){
 	## the remainder only applies to app bundles
 	[[ "$target" == *.app ]] || return 0
 
+	rm "$target/Contents/Resources/"*.rsrc 2>/dev/null ||: # remove this cruft
+
 	copy_resources || return
 	write_to_plist || return
 	generate_icons || return
@@ -156,7 +158,8 @@ generate_icons(){
 			-replace CFBundleIconFile \
 			-string "AppIcon" \
 			"$target/Contents/Info.plist"
-		rm "$target/Contents/Resources/applet.icns"
+		rm "$target/Contents/Resources/applet.icns" 2>/dev/null || :
+		rm "$target/Contents/Resources/droplet.icns" 2>/dev/null || :
 
 	fi
 }
