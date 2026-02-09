@@ -6,13 +6,15 @@
 PROGRAM=serverctl
 VERSION=0.4
 
+HOMEPAGE=https://github.com/heckman/photos-server
 APP_BID=ca.heckman.PhotosServer
 # appdended to the bundle identifier for launch agent and launch daemon
 LAUNCH_AGENT_SUFFIX=.listener
 LAUNCH_DAEMON_SUFFIX=.port-forwarding
 # paths relative to the bundle's Resources folder
-HTTP_HANDLER_RESOURCE_PATH='Scripts/Photos Server'
-FALLBACK_DEFAULTS_RESOURCE_PATH='defaults.plist'
+HTTP_HANDLER_RESOURCE='Scripts/Photos Server'
+FALLBACK_DEFAULTS_RESOURCE='defaults.plist'
+ICON_RESOURCE='AppIcon.icns'
 
 # only use standard commands
 PATH='/usr/bin:/bin'
@@ -20,10 +22,12 @@ PATH='/usr/bin:/bin'
 # it is crucial we exit on errors and unset variables
 set -o errexit -o nounset
 
+SELF="$(realpath "$0")"
 # the rest of these constants are have calculated values
 RESOURCES="$(dirname "$SELF")/.."
-HTTP_HANDLER="$RESOURCES/$HTTP_HANDLER_RESOURCE_PATH"
-DEFAULT_SETTINGS_PLIST="$RESOURCES/$FALLBACK_DEFAULTS_RESOURCE_PATH"
+HTTP_HANDLER="$RESOURCES/$HTTP_HANDLER_RESOURCE"
+DEFAULT_SETTINGS_PLIST="$RESOURCES/$FALLBACK_DEFAULTS_RESOURCE"
+ICON_PATH="$RESOURCES/$ICON_RESOURCE"
 
 LAUNCH_AGENT_DIR="$HOME/Library/LaunchAgents"
 LAUNCH_AGENT_LABEL="$APP_BID$LAUNCH_AGENT_SUFFIX"
@@ -56,6 +60,8 @@ Commands:
 
     test          Tests whether the server is running. Returns a non-zero exit
                   code if the server is not running. Produces no output.
+
+    dialog        Open a GUI dialog control panel.
 
     forwarding    Print port forwarding rules configured by the optional launch
                   daemon. The rules are not neccessarily active. IP addresses
@@ -92,34 +98,10 @@ main() {
 	-h|-help|--help|help) usage;;
 	-v|-version|--version|version) version;;
 	start|restart|enable|install)
-		local port=
-		test -z "${2-}" || port="$(validate_port "$2")"
-		if is_server_running
-		then
-			echo "Restarting Photos Server..."
-			stop_server
-		else
-			echo "Starting Photos Server..."
-		fi
-		install_launch_agent "$port"
-		start_server
-		echo "Photos Server started on port $(get_port)"
+		enable_server "${2-}"
 		;;
-	stop|remove|disable|uninstall) if is_server_running
-		then
-			echo "Stopping Photos Server..."
-			stop_server
-		else
-			echo "Photos Server is not running."
-		fi
-		if is_launch_agent_installed
-		then
-			echo "Removing launch agent..."
-			remove_launch_agent
-			echo "Launch agent has been removed."
-		else
-			echo "Launch agent is not installed."
-		fi
+	stop|remove|disable|uninstall)
+		disable_server
 		;;
 	port)
 		get_port
@@ -128,19 +110,14 @@ main() {
 		is_server_running
 		;;
 	status|'')
-		if is_server_running
-		then echo "Server is running on port $(get_port)"
-		elif is_launch_agent_installed
-		then echo "Server is installed, but not running."
-		else echo "Server is not installed."
-		fi
+		print_status
 		;;
 	default|defaults)
 		case "${2-}" in
-		'') print_defaults;;
+		'') get_defaults;;
 		browser|origin|port)
 			if test -z "${3-}"
-			then print_default "$2"
+			then get_default "$2"
 			else set_default "$2" "$3"
 			fi
 			;;
@@ -148,10 +125,13 @@ main() {
 		esac
 		;;
 	redirections|forwarding)
-		redirections "$(print_default origin)"
+		print_forwarding
 		;;
 	browsers)
 		valid_browsers
+		;;
+	dialog)
+		primeModal
 		;;
 	function)
 		shift
@@ -164,6 +144,37 @@ main() {
 		err USAGE "Unknown command: $1"
 		;;
 	esac
+}
+enable_server(){
+	local port=
+	test -z "${1-}" || port="$(validate_port "$1")"
+	if is_server_running
+	then
+		echo "Restarting Photos Server..."
+		stop_server
+	else
+		echo "Starting Photos Server..."
+	fi
+	install_launch_agent "$port"
+	start_server
+	echo "Photos Server started on port $(get_port)"
+}
+disable_server(){
+	if is_server_running
+	then
+		echo "Stopping Photos Server..."
+		stop_server
+	else
+		echo "Photos Server is not running."
+	fi
+	if is_launch_agent_installed
+	then
+		echo "Removing launch agent..."
+		remove_launch_agent
+		echo "Launch agent has been removed."
+	else
+		echo "Launch agent is not installed."
+	fi
 }
 err() {
 	case "$1" in
@@ -211,6 +222,14 @@ err() {
 pause() {
 	:
 }
+print_status() {
+	if is_server_running
+	then echo "Server is running on port $(get_port)"
+	elif is_launch_agent_installed
+	then echo "Server is installed, but not running."
+	else echo "Server is not installed."
+	fi
+}
 validate_port() { local port="$1"
 	test -n "$port" || err PORT_NOT_SET
 	case "$port" in *[!0-9]*)
@@ -250,7 +269,7 @@ install_launch_agent(){ local port="$1"
 		defaults write "$APP_BID" port "$port" 2>/dev/null ||
 			err CANT_WRITE_DEFAULTS port "$port"
 	else
-		port="$(print_default port | grep .)" ||
+		port="$(get_default port | grep .)" ||
 			err CANT_READ_DEFAULTS port
 		validate_port "$port" # just in case a bad value got in somehow
 		write_launch_agent_plist "$port"
@@ -287,11 +306,11 @@ get_port() {
 	then plutil -extract Sockets.Photos.SockServiceName raw "${LAUNCH_AGENT_PLIST}"
 	fi
 }
-print_defaults() {
+get_defaults() {
 	defaults read "$APP_BID" 2>/dev/null ||
 	plutil -convert json -o - "${DEFAULT_SETTINGS_PLIST}"
 }
-print_default() { local default="$1"
+get_default() { local default="$1"
 	defaults read "$APP_BID" "$default" 2>/dev/null ||
 	plutil -extract "$default" raw "${DEFAULT_SETTINGS_PLIST}"
 }
@@ -341,7 +360,7 @@ validate_browser() { local browser="$1"
 		tr -d ']"[')";;
 	esac
 }
-redirections(){
+print_forwarding(){
 	test -f "/Library/LaunchDaemons/$FORWARDING_DAEMON.plist" || return
 	# shellcheck disable=SC2046  # subshell output splits on whitespace
 	# shellcheck disable=SC2183  # command expansion splits into 4 words
@@ -376,6 +395,157 @@ selfcheck_err_codes() {
 		}
 	' "$SELF" | grep . && return 1 || return 0
 }
+
+
+jxa() { local script="$1"; shift # remainder are script args
+	osascript -sh -l JavaScript -e "
+const app = Application('System Events');app.includeStandardAdditions = true;app.activate();
+//	const app = Application.currentApplication();app.includeStandardAdditions = true;
+$script" -- "$@"
+}
+dialogBox() { local message="$1" options="${2+", $2"}"
+	jxa "function run(args){returned=app.displayDialog(args[0]$options);return returned.textReturned}" "$message"
+}
+# reads list of choices from stdin
+choiceBox() { local options="${1+", $1"}"
+	local arg
+	set --
+	while IFS= read -r arg
+	do set -- "$@" "$arg"
+	done
+	jxa "function run(list){return app.chooseFromList(list$options)[0]}" "$@" |
+	grep .
+}
+infoBox() { local message="$1" timeout="${2:-0}"
+	dialogBox "$message" '{
+		withTitle: "Photos Server",
+		withIcon: Path("'"$ICON_PATH"'"),
+		givingUpAfter: '"$timeout"',
+		buttons: ["Dismiss"],
+		defaultButton: "Dismiss",
+	}'
+}
+pauseBox() { local message="$1"
+	infoBox "$message" 1.5
+}
+primeModal() {
+	local choice options status
+	local choices='
+on	portModal	Change the port
+on	disableNotice	Disable the server
+off	portModal	Enable the server
+both	browserModal	Set browser for everything else
+both	forwardsModal	Display configured port forwarding
+
+both	visitNotice	Visit Photos Server homepage
+'
+	status='`'"$(print_status)
+
+Links beginning with $(get_default origin)
+will open in Photos.
+
+Everything else will open in $(get_default browser)."'`'
+
+	options='{
+		withTitle:"Photos Server Control",
+		withPrompt:'"$status"',
+		okButtonName: "Select",
+		cancelButtonName: "Done"
+	}'
+
+	choice="$(echo "$choices" |
+	awk -F'\t' '
+		/^'"$(
+			is_server_running && echo on || echo off
+		)"'|both/{
+			print $3
+		}
+	' | choiceBox "$options")" || exit 0
+
+	eval "$(echo "$choices" |
+	awk -v choice="$choice" -F'\t' '$NF==choice{print $2}')"
+
+	primeModal
+}
+disableNotice(){
+	disable_server
+	infoBox "Disabling server" 1.5
+}
+visitNotice(){
+	infoBox "Opening Photos Server homepage..." 1.5
+	open "$HOMEPAGE"
+}
+forwardsModal() {
+	local forwarding
+	infoBox "$(
+		if forwarding="$(print_forwarding | grep .)"
+		then printf "These redirections are configured, but not necessarily enabled.\n\n%s" "$forwarding"
+		else printf "No redirections configured"
+		fi
+	)"
+}
+portModal() { local errorMessage="${1:-Select the port}"
+	local port
+	port="$(dialogBox "$errorMessage" '{
+		defaultAnswer: "'"$(get_default port)"'",
+		buttons: ["Cancel", "OK"],
+		defaultButton: "OK",
+		cancelButton: "Cancel",
+		withTitle: "'"$(
+			is_server_running &&
+			echo "Photos Server: Change Listening Port" ||
+			echo "Photos Server: Enable Server")"'"
+	}')"
+	if message="$(validate_port "$port" 2>&1)"
+	then
+		enable_server "$port"
+	else
+		portModal "$message"
+	fi
+}
+browserModal() {
+	local browser
+	if browser="$(
+		valid_browsers |
+		awk 'BEGIN{RS=", "}{gsub(/^\[?"|"]?[[:space:]]*$/,"");print}' |
+		choiceBox '{
+			withTitle: "Photos Server Preferences",
+			withPrompt: "Select Default Browser",
+			defaultItems: ["'"$(
+				get_default browser
+			)"'"],
+			okButtonName: "Select",
+			cancelButtonName: "Cancel",
+			multipleSelectionsAllowed: false,
+			emptySelectionAllowed: false,
+		}'
+	)"
+	then set_default browser "$browser"
+	fi
+}
+
+originModal() { local errorMessage="${1+"$1
+
+"}"
+	errorMessage="${errorMessage}URLs begining with this prefix will be opened in Photos.
+(http:// will pre prepended if the scheme is not entered here.)"
+	local origin
+	origin="$(dialogBox "$errorMessage" '{
+		defaultAnswer: "'"$(get_default origin)"'",
+		buttons: ["Cancel", "OK"],
+		defaultButton: "OK",
+		cancelButton: "Cancel",
+		withTitle: "Photos Server: Set Origin"
+	}')"
+	if origin="$(validate_origin "$origin" 2>&1)"
+	then
+		set_default origin "$origin"
+	else
+		originModal "$origin"
+	fi
+
+}
+
 
 main "$@"
 

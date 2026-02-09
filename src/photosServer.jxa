@@ -7,12 +7,11 @@ app.includeStandardAdditions = true;
 const resources = {
 	defaults: () => resource("defaults", { extension: "plist" }),
 	handler: () => resource("Photos Server", { directory: "Scripts" }),
-	gui: () => resource("control-panel", { directory: "Scripts" }),
+	gui: () => resource("serverctl", { directory: "Scripts" }),
 };
 const tasks = {
 	urlHandler: (url) => task("/bin/dash", resources.handler(), url),
-	controlPanel: () =>
-		task("/usr/bin/osascript", "-l", "JavaScript", resources.gui()),
+	controlPanel: () => task("/bin/dash", resources.gui(), "dialog"),
 };
 
 function run() {
