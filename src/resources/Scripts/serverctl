@@ -6,9 +6,10 @@
 PROGRAM=serverctl
 VERSION=0.4
 
+APP_BID=ca.heckman.PhotosServer
 # appdended to the bundle identifier for launch agent and launch daemon
-LAUNCH_AGENT_SUFFIX='.listener'
-LAUNCH_DAEMON_SUFFIX='.port-forwarding'
+LAUNCH_AGENT_SUFFIX=.listener
+LAUNCH_DAEMON_SUFFIX=.port-forwarding
 # paths relative to the bundle's Resources folder
 HTTP_HANDLER_RESOURCE_PATH='Scripts/Photos Server'
 FALLBACK_DEFAULTS_RESOURCE_PATH='defaults.plist'
@@ -20,15 +21,9 @@ PATH='/usr/bin:/bin'
 set -o errexit -o nounset
 
 # the rest of these constants are have calculated values
-
-SELF="$(realpath "$0")"
-
 RESOURCES="$(dirname "$SELF")/.."
 HTTP_HANDLER="$RESOURCES/$HTTP_HANDLER_RESOURCE_PATH"
 DEFAULT_SETTINGS_PLIST="$RESOURCES/$FALLBACK_DEFAULTS_RESOURCE_PATH"
-
-APP_BID="$(plutil -extract CFBundleIdentifier raw "$RESOURCES/../Info.plist")"
-test -n "$APP_BID" || { echo "No BID, bailing!" >&2; exit 1; }
 
 LAUNCH_AGENT_DIR="$HOME/Library/LaunchAgents"
 LAUNCH_AGENT_LABEL="$APP_BID$LAUNCH_AGENT_SUFFIX"
