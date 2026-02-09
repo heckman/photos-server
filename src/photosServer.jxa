@@ -4,43 +4,38 @@ ObjC.import("AppKit");
 const app = Application.currentApplication();
 app.includeStandardAdditions = true;
 
-const scripts = {
-	urlHandler: (url) => [
-		"/bin/dash",
-		resourcePath("Photos Server"),
-		url,
-	],
-	controlPanel: () => [
-		"/usr/bin/osascript",
-		"-l",
-		"JavaScript",
-		resourcePath("control-panel"),
-	],
+const tasks = {
+	urlHandler: (url) =>
+		task("/bin/dash", resourcePath("Photos Server"), url),
+	controlPanel: () =>
+		task(
+			"/usr/bin/osascript",
+			"-l",
+			"JavaScript",
+			resourcePath("control-panel"),
+		),
 };
 
 function run() {
-	activateProcess(exec(...scripts.controlPanel()));
+	activateProcess(tasks.controlPanel().processIdentifier);
 }
 
 function GURLGURL(url) {
-	if (url.startsWith(config.get("origin")))
-		return system(...scripts.urlHandler(url)) == 0;
-	else launchAppWithUrl(config.get("browser"), url);
-	return true;
+	return url.startsWith(config.get("origin"))
+		? exitedCleanly(tasks.urlHandler(url))
+		: openURLsWithAppBundleIdentifier(
+				[url],
+				bundleIdentifierForApp(config.get("browser")),
+			);
+}
+
+function exitedCleanly(task) {
+	task.waitUntilExit();
+	return task.terminationStatus === 0;
 }
 
 function resourcePath(name, ext = $()) {
 	return $.NSBundle.mainBundle.pathForResourceOfType(name, ext).js;
-}
-
-function exec(bin, ...args) {
-	const t = task(bin, ...args);
-	return t.processIdentifier;
-}
-function system(bin, ...args) {
-	const t = task(bin, ...args);
-	t.waitUntilExit();
-	return t.terminationStatus;
 }
 
 function task(bin, ...args) {
@@ -65,17 +60,21 @@ function activateProcess(pid, wait = 0.25) {
 	}
 	return false;
 }
-
-function launchAppWithUrl(appName, url) {
-	const workspace = $.NSWorkspace.sharedWorkspace;
-	workspace.openURLsWithApplicationAtURLConfigurationCompletionHandler(
-		$([$.NSURL.URLWithString(url)]),
-		$.NSURL.fileURLWithPath(
-			workspace.fullPathForApplication(appName),
-		),
-		$.NSWorkspaceOpenConfiguration.configuration,
-		$(), // No completion handler needed
+function openURLsWithAppBundleIdentifier(urls, bundleIdentifier) {
+	return $.NSWorkspace.sharedWorkspace.openURLsWithAppBundleIdentifierOptionsAdditionalEventParamDescriptorLaunchIdentifiers(
+		$(urls.map((u) => $.NSURL.URLWithString(u))),
+		bundleIdentifier,
+		$.NSWorkspaceLaunchDefault,
+		$.NSAppleEventDescriptor.nullDescriptor,
+		null,
 	);
+}
+// returns an ObjC string
+function bundleIdentifierForApp(name) {
+	const appPath =
+		$.NSWorkspace.sharedWorkspace.fullPathForApplication(name);
+	if (appPath.isNil()) throw new Error("App not found: " + name);
+	return $.NSBundle.bundleWithPath(appPath).bundleIdentifier;
 }
 
 const config = ((defaults, fallbackPlistPath) => {

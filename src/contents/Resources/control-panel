@@ -88,15 +88,16 @@ const config = ((defaults, fallbackPlistPath) => {
 );
 
 const launchAgent = ((serverctl) => {
+	const execute = (cmd) => app.doShellScript(`'${serverctl}' ${cmd}`);
 	return {
-		status: () => app.doShellScript(`'${serverctl}' status`),
-		start: (port) =>
-			app.doShellScript(`'${serverctl}' start ${port}`),
-		stop: () => app.doShellScript(`'${serverctl}' stop`),
-		port: () => app.doShellScript(`'${serverctl}' port`),
+		status: () => execute("status"),
+		start: (port) => execute(`start ${port}`),
+		stop: () => execute("stop"),
+		port: () => execute("port"),
+		forwarding: () => execute("forwarding"),
 		isRunning: () => {
 			try {
-				app.doShellScript(`'${serverctl}' test`);
+				execute("test");
 				return true;
 			} catch {
 				return false;
@@ -132,11 +133,7 @@ function primeModal() {
 	const browser = config.get("browser");
 	const origin = config.get("origin");
 	const port = launchAgent.port();
-	const redirections = app
-		.doShellScript(
-			`${resource("redirections")} ${origin.replace(/^.*\/\//, "")}||:`,
-		)
-		.trim();
+	const redirections = launchAgent.forwarding().trim();
 	const choices = {
 		restart: { label: "Change the port", action: portModal },
 		remove: {

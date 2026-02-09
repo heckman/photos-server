@@ -6,20 +6,35 @@
 PROGRAM=serverctl
 VERSION=0.4
 
+# appdended to the bundle identifier for launch agent and launch daemon
+LAUNCH_AGENT_SUFFIX='.listener'
+LAUNCH_DAEMON_SUFFIX='.port-forwarding'
+# paths relative to the bundle's Resources folder
+HTTP_HANDLER_RESOURCE_PATH='Photos Server'
+FALLBACK_DEFAULTS_RESOURCE_PATH='defaults.plist'
 
-APP_BID="ca.heckman.PhotosServer"
+# only use standard commands
+PATH='/usr/bin:/bin'
 
-set -eu
+# it is crucial we exit on errors and unset variables
+set -o errexit -o nounset
+
+# the rest of these constants are have calculated values
 
 SELF="$(realpath "$0")"
 
 RESOURCES="$(dirname "$SELF")"
-HTTP_HANDLER="$RESOURCES/Photos Server"
-DEFAULT_SETTINGS_PLIST="$RESOURCES/defaults.plist"
+HTTP_HANDLER="$RESOURCES/$HTTP_HANDLER_RESOURCE_PATH"
+DEFAULT_SETTINGS_PLIST="$RESOURCES/$FALLBACK_DEFAULTS_RESOURCE_PATH"
 
-LAUNCH_AGENT_LABEL="$APP_BID.listener"
+APP_BID="$(plutil -extract CFBundleIdentifier raw "$RESOURCES/../Info.plist")"
+test -n "$APP_BID" || { echo "No BID, bailing!" >&2; exit 1; }
+
 LAUNCH_AGENT_DIR="$HOME/Library/LaunchAgents"
+LAUNCH_AGENT_LABEL="$APP_BID$LAUNCH_AGENT_SUFFIX"
 LAUNCH_AGENT_PLIST="$LAUNCH_AGENT_DIR/$LAUNCH_AGENT_LABEL.plist"
+
+FORWARDING_DAEMON="$APP_BID$LAUNCH_DAEMON_SUFFIX"
 
 usage() {
 	echo "
@@ -47,6 +62,15 @@ Commands:
     test          Tests whether the server is running. Returns a non-zero exit
                   code if the server is not running. Produces no output.
 
+    forwarding    Print port forwarding rules configured by the optional launch
+                  daemon. The rules are not neccessarily active. IP addresses
+		  will be replaced with their last corresponding hostname in
+		  /etc/hosts, if any. If there are no configure rules, no output
+		  will be produced. In any case, exit status is 0.
+
+    browsers      Lists the applications suitable for using as the preferred
+                  handler for opening HTTP URLs, as a json array.
+
     defaults      Prints the current values of the settings, in json format.
 
     defaults [origin|browser|port]
@@ -61,10 +85,13 @@ Commands:
 
 		  Note that when the origin in set, it will be given a scheme of
 		  http://, in place of any that may have been provided.
+
+		  Unsuitable values will be rejected with a non-zero exit code.
 "
 }
-version() { echo "$PROGRAM v$VERSION"; }
-
+version() {
+	echo "$PROGRAM v$VERSION"
+}
 main() {
 	case "${1-}" in
 	-h|-help|--help|help) usage;;
@@ -125,6 +152,12 @@ main() {
 		*) err USAGE "Invalid default argument: $2";;
 		esac
 		;;
+	redirections|forwarding)
+		redirections "$(print_default origin)"
+		;;
+	browsers)
+		valid_browsers
+		;;
 	function)
 		shift
 		if type "${1-}" | grep -qF 'function'
@@ -137,7 +170,6 @@ main() {
 		;;
 	esac
 }
-
 err() {
 	case "$1" in
 	USAGE)
@@ -151,7 +183,7 @@ err() {
 		return 74;;
 	PORT_TOO_LOW) echo "Port $2 is too low. It must be between 1024 and 65535."
 		return 75;;
-	PORT_RESERVED) echo "Ports 5000 and 7000 are reserved."
+	PORT_RESERVED) echo "Sorry, port $2 is reserved."
 		return 76;;
 	CANT_MKDIR) echo "Could not create directory: $2"
 		return 77;;
@@ -173,17 +205,17 @@ err() {
 		return 85;;
 	ALREADY_RUNNING) echo "Photos Server is already running."
 		return 86;;
-	INVALID_ORIGIN) echo "Invalid origin: $2"
+	INVALID_ORIGIN) echo "'$2' is not a valid origin."
 		return 87;;
-	INVALID_BROWSER) echo "'$2' is not a valid browser. Available browsers: $3."
+	INVALID_BROWSER) echo "'$2' is not registered to handle HTTP URLs. Valid applictions: $3."
 		return 88;;
 	*) echo "Unknown error: $1"
 		return "$1";;
 	esac >&2;
 }
-
-pause() { :;}
-
+pause() {
+	:
+}
 validate_port() { local port="$1"
 	test -n "$port" || err PORT_NOT_SET
 	case "$port" in *[!0-9]*)
@@ -194,7 +226,6 @@ validate_port() { local port="$1"
 	test "$port" -ne 5000 -a "$port" -ne 7000 || err PORT_RESERVED "$port"
 	echo "${port#"${port%%[!0]*}"}" # remove leading zeros
 }
-
 write_launch_agent_plist(){ local port="$1"
 	mkdir -p "$LAUNCH_AGENT_DIR" || err CANT_MKDIR "$LAUNCH_AGENT_DIR"
 	{
@@ -217,7 +248,6 @@ write_launch_agent_plist(){ local port="$1"
 		EOF
 	} || err CANT_WRITE_PLIST "$LAUNCH_AGENT_PLIST"
 }
-
 install_launch_agent(){ local port="$1"
 	if test -n "$port"
 	then
@@ -231,12 +261,10 @@ install_launch_agent(){ local port="$1"
 		write_launch_agent_plist "$port"
 	fi
 }
-
 remove_launch_agent(){
 	rm "$LAUNCH_AGENT_PLIST" ||
 		err CANT_REMOVE_LAUNCH_AGENT
 }
-
 start_server() {
 	is_launch_agent_installed || err LAUNCH_AGENT_NOT_INSTALLED
 	! is_server_running || err ALREADY_RUNNING
@@ -245,7 +273,6 @@ start_server() {
 	pause
 	is_server_running || err CANT_START_SERVER
 }
-
 stop_server() {
 	is_server_running || err NOT_RUNNING
 	launchctl bootout "gui/$(id -u)/${LAUNCH_AGENT_LABEL}" ||
@@ -253,7 +280,6 @@ stop_server() {
 	pause
 	! is_server_running || err CANT_STOP_SERVER
 }
-
 is_launch_agent_installed() {
 	test -e "${LAUNCH_AGENT_PLIST}"
 }
@@ -290,10 +316,9 @@ validate_origin() { local origin="${1#*://}" # strip scheme
 	echo "http://$origin"
 
 }
-validate_browser() { local browser="$1"
-	local valid_browsers
+valid_browsers() {
 	# shellcheck disable=SC2016  # the jxa script must not suffer expansion
-	valid_browsers="$(/usr/bin/osascript -l JavaScript -e 'ObjC.import("AppKit");
+	osascript -ss -l JavaScript -e 'ObjC.import("AppKit");
         const appURLs =
                 $.NSWorkspace.sharedWorkspace.URLsForApplicationsToOpenURL(
                         $.NSURL.URLWithString($("https://apple.com")),
@@ -308,11 +333,29 @@ validate_browser() { local browser="$1"
                         return String(ObjC.unwrap(name));
                 })
                 .filter((name) => name !== "Photos Server");
-')"
-	case "$valid_browsers" in
-	"$browser,"*|*", $browser"|*", $browser,"*) echo "$browser";;
-	*) err INVALID_BROWSER "$1" "$valid_browsers";;
+'
+}
+validate_browser() { local browser="$1"
+	local valid_browsers_list
+	valid_browsers_list="$(valid_browsers)"
+	case "$valid_browsers_list" in
+	*'"'"$browser"'"'*)
+		echo "$browser";;
+	*)
+		err INVALID_BROWSER "$1" "$(echo "$valid_browsers_list" |
+		tr -d ']"[')";;
 	esac
+}
+redirections(){
+	test -f "/Library/LaunchDaemons/$FORWARDING_DAEMON.plist" || return
+	# shellcheck disable=SC2046  # subshell output splits on whitespace
+	printf "IP4:  %s 🠪 %s\nIP6:  %s 🠪 %s\n" $(
+		launchctl print "system/$FORWARDING_DAEMON" |
+		grep -- '->' |
+		sed -E 's/^.* ([0-9.]+) port ([0-9]+) -> ([0-9.]+) port ([0-9]+)\\.* ([a-fA-F0-9:]+) port ([0-9]+) -> ([a-fA-F0-9:]+) port ([0-9]+)\\.*$/\1:\2 \3:\4 \5:\6 \7:\8/;' |
+		awk 'FNR==NR { hosts[$1]=$2; next } { for (ip in hosts) gsub(ip, hosts[ip]) } 1' /etc/hosts -
+	)
+
 }
 selfcheck_err_codes() {
 	# this self-check doesn't respect comments
@@ -337,5 +380,6 @@ selfcheck_err_codes() {
 		}
 	' "$SELF" | grep . && return 1 || return 0
 }
+
 main "$@"
 
