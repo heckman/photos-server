@@ -10,7 +10,7 @@ VERSION=0.4
 LAUNCH_AGENT_SUFFIX='.listener'
 LAUNCH_DAEMON_SUFFIX='.port-forwarding'
 # paths relative to the bundle's Resources folder
-HTTP_HANDLER_RESOURCE_PATH='Photos Server'
+HTTP_HANDLER_RESOURCE_PATH='Scripts/Photos Server'
 FALLBACK_DEFAULTS_RESOURCE_PATH='defaults.plist'
 
 # only use standard commands
@@ -23,7 +23,7 @@ set -o errexit -o nounset
 
 SELF="$(realpath "$0")"
 
-RESOURCES="$(dirname "$SELF")"
+RESOURCES="$(dirname "$SELF")/.."
 HTTP_HANDLER="$RESOURCES/$HTTP_HANDLER_RESOURCE_PATH"
 DEFAULT_SETTINGS_PLIST="$RESOURCES/$FALLBACK_DEFAULTS_RESOURCE_PATH"
 
@@ -349,6 +349,7 @@ validate_browser() { local browser="$1"
 redirections(){
 	test -f "/Library/LaunchDaemons/$FORWARDING_DAEMON.plist" || return
 	# shellcheck disable=SC2046  # subshell output splits on whitespace
+	# shellcheck disable=SC2183  # command expansion splits into 4 words
 	printf "IP4:  %s 🠪 %s\nIP6:  %s 🠪 %s\n" $(
 		launchctl print "system/$FORWARDING_DAEMON" |
 		grep -- '->' |

@@ -4,16 +4,15 @@ ObjC.import("AppKit");
 const app = Application.currentApplication();
 app.includeStandardAdditions = true;
 
+const resources = {
+	defaults: () => resource("defaults", { extension: "plist" }),
+	handler: () => resource("Photos Server", { directory: "Scripts" }),
+	gui: () => resource("control-panel", { directory: "Scripts" }),
+};
 const tasks = {
-	urlHandler: (url) =>
-		task("/bin/dash", resourcePath("Photos Server"), url),
+	urlHandler: (url) => task("/bin/dash", resources.handler(), url),
 	controlPanel: () =>
-		task(
-			"/usr/bin/osascript",
-			"-l",
-			"JavaScript",
-			resourcePath("control-panel"),
-		),
+		task("/usr/bin/osascript", "-l", "JavaScript", resources.gui()),
 };
 
 function run() {
@@ -34,9 +33,26 @@ function exitedCleanly(task) {
 	return task.terminationStatus === 0;
 }
 
-function resourcePath(name, ext = $()) {
-	return $.NSBundle.mainBundle.pathForResourceOfType(name, ext).js;
-}
+const resource = ((bundle) =>
+	function (name, options = {}) {
+		const path = bundle.pathForResourceOfTypeInDirectory(
+			name,
+			options?.extension || $(),
+			options?.directory || $(),
+		);
+		if (path.isNil()) {
+			throw new Error(
+				`Resource Not Found: '${
+					name + options?.extension
+						? "." + options?.extension
+						: ""
+				}' is not in '${
+					bundle.bundlePath.js
+				}/Contents/Resources/${options?.directory || ""} '`,
+			);
+		}
+		return path.js;
+	})($.NSBundle.mainBundle);
 
 function task(bin, ...args) {
 	const t = $.NSTask.alloc.init;
@@ -102,7 +118,4 @@ const config = ((defaults, fallbackPlistPath) => {
 			defaults.setObjectForKey($(value), key);
 		},
 	};
-})(
-	$.NSUserDefaults.standardUserDefaults,
-	resourcePath("defaults.plist"),
-);
+})($.NSUserDefaults.standardUserDefaults, resources.defaults());

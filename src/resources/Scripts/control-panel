@@ -10,11 +10,10 @@
 
 // required resources, relative to the Resources folder
 const resources = {
-	cli: ["serverctl"],
-	icon: ["AppIcon", "icns"],
-	defaults: ["defaults", "plist"],
-	homepage: ["homepage", "webloc"],
-	redirections: ["redirections"],
+	cli: () => resource("serverctl", { directory: "Scripts" }),
+	icon: () => resource("AppIcon", { extension: "icns" }),
+	defaults: () => resource("defaults", { extension: "plist" }),
+	homepage: () => resource("homepage", { extension: "webloc" }),
 };
 
 ObjC.import("AppKit");
@@ -31,19 +30,26 @@ const bundle = $.NSBundle.bundleWithPath(
 );
 if (bundle.isNil()) throw new Error("Bundle Not Found");
 
-const resource = ((bundle) => {
-	return (name, ext = $()) => {
-		const filename = resources[name] || [name];
-		const path = ((name, ext = $()) =>
-			bundle.pathForResourceOfType(name, ext))(...filename);
+const resource = ((bundle) =>
+	function (name, options = {}) {
+		const path = bundle.pathForResourceOfTypeInDirectory(
+			name,
+			options?.extension || $(),
+			options?.directory || $(),
+		);
 		if (path.isNil()) {
 			throw new Error(
-				`Resource Not Found: '${name}' is not in '${bundle.bundlePath.js}/Contents/Resources'`,
+				`Resource Not Found: '${
+					name + options?.extension
+						? "." + options?.extension
+						: ""
+				}' is not in '${
+					bundle.bundlePath.js
+				}/Contents/Resources/${options?.directory || ""} '`,
 			);
 		}
 		return path.js;
-	};
-})(bundle);
+	})(bundle);
 
 /**
  * A wrapper to set and get user defaults.
@@ -84,7 +90,7 @@ const config = ((defaults, fallbackPlistPath) => {
 	};
 })(
 	$.NSUserDefaults.alloc.initWithSuiteName(bundle.bundleIdentifier),
-	resource("defaults"),
+	resources.defaults(),
 );
 
 const launchAgent = ((serverctl) => {
@@ -104,7 +110,7 @@ const launchAgent = ((serverctl) => {
 			}
 		},
 	};
-})(resource("cli"));
+})(resources.cli());
 
 function run(args) {
 	primeModal();
@@ -119,10 +125,11 @@ function readPlist(plistFile) {
 function pause(message) {
 	return infobox(message, 1.5);
 }
+
 function infobox(message, timeout = 0) {
 	app.displayDialog(message, {
 		withTitle: "Photos Server",
-		withIcon: Path(resource("icon")),
+		withIcon: Path(resources.icon()),
 		givingUpAfter: timeout, // Dismisses after 1 second
 		buttons: ["Dismiss"],
 		defaultButton: "Dismiss",
@@ -162,7 +169,7 @@ function primeModal() {
 			action: () => {
 				pause("Opening homepage...");
 				$.NSWorkspace.sharedWorkspace.openFile(
-					resource("homepage"),
+					resources.homepage(),
 				);
 				return false;
 			},
@@ -212,6 +219,7 @@ function redirectionsModal(redirections) {
 	);
 	return true;
 }
+
 function originModal() {
 	try {
 		const origin = app.displayDialog(
@@ -251,6 +259,7 @@ function browserList() {
 		})
 		.filter((name) => name !== "Photos Server");
 }
+
 function browserModal() {
 	const browser = app.chooseFromList(browserList(), {
 		withTitle: "Photos Server Preferences",
