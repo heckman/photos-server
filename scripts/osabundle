@@ -37,7 +37,7 @@ readonly -A errors=(
 	[SCRIPT_NOT_FOUND]='26:Script file not found: %s'
 	[BAD_SCRIPT_EXTENSION]='27:Unknown script extension: %s'
 	[CANT_COMPILE_SCRIPT]='28:Cannot compile osascript: %s'
-	[CANT_COPY_CONTENTS]='29:Cannot copy contents: %s'
+	[CANT_COPY_RESOURCES]='29:Cannot copy resources: %s'
 	[PLIST_NOT_FOUND]='30:Plist not found: %s'
 	[CANT_MODIFY_PLIST]='31:Cannot create plist'
 	[CANT_COMPILE_ICON]='32:Cannot compile icon: %s'
@@ -94,7 +94,7 @@ main(){
 	## the remainder only applies to app bundles
 	[[ "$target" == *.app ]] || return 0
 
-	copy_contents || return
+	copy_resources || return
 	write_to_plist || return
 	generate_icons || return
 
@@ -102,13 +102,13 @@ main(){
 	return 0
 }
 # merge the contents of source contents into target conents
-copy_contents(){
-	local contents
-	if contents="$(get_path .contents)"
+copy_resources(){
+	local resources
+	if resources="$(get_path .resources)"
 	then
-		xattr -cr "$contents"
-		ditto "$contents" "$target/Contents" ||
-			return "$(err CANT_COPY_CONTENTS "$contents")"
+		xattr -cr "$resources"
+		ditto "$resources" "$target/Contents/Resources" ||
+			return "$(err CANT_COPY_RESOURCES "$resources")"
 	fi
 }
 # generate tahoe and/or legacy icons

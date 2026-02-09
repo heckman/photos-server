@@ -8,7 +8,7 @@
 	"entry": "photosServer.jxa",
 	"icon": "icon/AppIcon.icon",
 	"legacyIcon": "icon/Sequoia/light.png",
-	"contents": "contents",
+	"resources": "resources",
 	"plist": {
 		"CFBundleDocumentTypes": [
 			{
