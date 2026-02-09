@@ -10,6 +10,7 @@
 	"legacyIcon": "icon/Sequoia/light.png",
 	"resources": "resources",
 	"plist": {
+		"LSUIElement": true,
 		"CFBundleDocumentTypes": [
 			{
 				"CFBundleTypeName": "HTML document",
