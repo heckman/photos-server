@@ -1,5 +1,7 @@
 # Photos Server
 
+## README IS STALE
+
 Photos Server does three things:
 
 1. Serves media items from the Photos library via HTTP on localhost.
