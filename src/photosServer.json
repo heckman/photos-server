@@ -9,6 +9,9 @@
 	"icon": "icon/AppIcon.icon",
 	"legacyIcon": "icon/Sequoia/light.png",
 	"resources": "resources",
+	"scriptLibraries": {
+		"Photos Links.scptd": "photosLinks.jxa"
+	},
 	"plist": {
 		"LSUIElement": true,
 		"CFBundleDocumentTypes": [

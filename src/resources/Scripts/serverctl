@@ -3,7 +3,11 @@
 # except where otherwise noted
 # <https://github.com/heckman/photos-server>
 
-PROGRAM=serverctl
+
+# photos-server-serverctl
+
+
+COMMAND=serverctl
 VERSION=0.4
 
 HOMEPAGE=https://github.com/heckman/photos-server
@@ -37,9 +41,9 @@ FORWARDING_DAEMON="$APP_BID$LAUNCH_DAEMON_SUFFIX"
 
 usage() {
 	echo "
-Usage: $PROGRAM start [port]
-       $PROGRAM [stop|status|port|test]
-       $PROGRAM defaults [origin|browser|port] [VALUE]
+Usage: $COMMAND start [port]
+       $COMMAND [stop|status|port|test]
+       $COMMAND defaults [origin|browser|port] [VALUE]
 
 Controls the server and settings for the Photos Server application.
 
@@ -91,7 +95,7 @@ Commands:
 "
 }
 version() {
-	echo "$PROGRAM v$VERSION"
+	echo "$COMMAND v$VERSION"
 }
 main() {
 	case "${1-}" in
@@ -130,7 +134,7 @@ main() {
 	browsers)
 		valid_browsers
 		;;
-	dialog)
+	dialog|gui)
 		primeModal
 		;;
 	function)

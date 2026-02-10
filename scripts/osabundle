@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 
 
-readonly usage="Usage: $0 <config> [target] [script]"
+usage="Usage: $(basename "$0") <config> [target] [script]"
+readonly usage
 
 # dependencies
 
@@ -48,9 +49,13 @@ readonly -A errors=(
 main(){
 	local config_file script_file
 
-	if [[ $1 == -h || $1 == --help ]]
+	if [[ $# -eq 0 ]]
 	then
-		ok "$usage"
+		echo "$usage"
+		return 2
+	elif [[ $1 == -h || $1 == --help ]]
+	then
+		echo "$usage"
 		return 0
 	fi
 
@@ -85,10 +90,17 @@ main(){
 		target="$target_dir/$basename.app"
 		;;
 	esac
+
+	[[ -n ${script_file-} ]] ||
+		 script_file="$(get_path .entry)" || return "$(err NO_SCRIPT)"
+
+
+
 	mkdir -p "$target_dir" ||
 		return "$(err CANT_MAKE_TARGET_DIR "$target_dir")"
 
-	compile_script "${script_file:-}" || return
+	compile_script "${script_file:-}" "$target" || return
+
 
 
 	## the remainder only applies to app bundles
@@ -96,12 +108,26 @@ main(){
 
 	rm "$target/Contents/Resources/"*.rsrc 2>/dev/null ||: # remove this cruft
 
+	compile_script_libraries|| return
 	copy_resources || return
 	write_to_plist || return
 	generate_icons || return
 
 	codesign --force --deep --sign - "$target"
 	return 0
+}
+compile_script_libraries() {
+	local script_libraries
+	mapfile -t script_libraries < <(get_prop .scriptLibraries | jq -r 'keys[]')
+	if [[ -n "${script_libraries[*]}" ]]
+	then
+		mkdir -p "$target/Contents/Resources/Script Libraries"
+		for library in "${script_libraries[@]}"
+		do
+			script="$(get_path ".scriptLibraries[\"$library\"]")"
+			compile_script "$script" "$target/Contents/Resources/Script Libraries/$library"
+		done
+	fi
 }
 # merge the contents of source contents into target conents
 copy_resources(){
@@ -164,10 +190,8 @@ generate_icons(){
 	fi
 }
 
-compile_script(){ local script_file="$1"
+compile_script(){ local script_file="$1" target="$2"
 
-	[[ -n $script_file ]] ||
-		 script_file="$(get_path .entry)" || return "$(err NO_SCRIPT)"
 	[[ -f "$script_file" ]] ||
 		return "$(err SCRIPT_NOT_FOUND "$script_file")"
 
@@ -179,13 +203,7 @@ compile_script(){ local script_file="$1"
 	*) return "$(err BAD_SCRIPT_EXTENSION "${script_file##*.}")"
 	esac
 
-	cat <(
-		jq -r '
-			.constants // halt | to_entries[] |
-			"const \(.key)=\(.value|@json);"
-		' <<<"$config"
-	) <(get_prop .prescript[]) "$script_file" |
-	osacompile -l "$osa_language" -o "$target" ||
+	osacompile -l "$osa_language" -o "$target" "$script_file" ||
 		return "$(err CANT_COMPILE_SCRIPT "$script_file")"
 }
 

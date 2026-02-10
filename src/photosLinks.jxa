@@ -7,19 +7,16 @@
 //
 //
 //
-
-const photos = Application("Photos");
-photos.includeStandardAdditions = true;
-
 const app = Application.currentApplication();
 app.includeStandardAdditions = true;
-
-const defaultOrigin = "http://127.0.0.1:6330";
 
 const origin = () =>
 	app.doShellScript(
 		"defaults read ca.heckman.PhotosServer origin 2>/dev/null || true",
-	) || defaultOrigin;
+	) || "http://127.0.0.1:6330";
+
+const photos = Application("Photos");
+photos.includeStandardAdditions = true;
 
 function altText(props) {
 	return (
@@ -41,9 +38,9 @@ function trimmed_filename(filename) {
 		.replace(filenameExtensions, ""); // remove extension
 }
 
-function daysOff(date, offset) {
-	newDate = new Date(date);
-	newDate.setDate(date.getDate() + offset);
+function daysOff(date, offsetInDays) {
+	const newDate = new Date(date);
+	newDate.setDate(date.getDate() + offsetInDays);
 	return newDate;
 }
 
@@ -78,22 +75,20 @@ function properties(item) {
 	}
 }
 
-function copy_markdown_links(items) {
-	photos.setTheClipboardTo(
-		items
-			.map((item) => {
-				const props = properties(item);
-				return `![${altText(props)}](${url(props)})`;
-			})
-			.join("\n") + "\n",
-	);
+function as_markdown_link(item) {
+	const props = properties(item);
+	return `[${altText(props)}](${url(props)})`;
 }
 
-function run(args) {
+function copy_selection_as_markdown_links() {
 	const items = photos.selection();
 	const count = items.length;
 
-	if (count) copy_markdown_links(items);
+	if (count)
+		photos.setTheClipboardTo(
+			items.map((item) => as_markdown_link(item)).join("\n") +
+				"\n",
+		);
 
 	const [title, message] = count
 		? [
@@ -113,10 +108,15 @@ function run(args) {
 			givingUpAfter: 5,
 		});
 	} catch (e) {
-		if (e.errorNumber != -128) { // -128 is the Cancel button
+		if (e.errorNumber != -128) {
+			// -128 is the Cancel button
 			throw e;
 		}
 	} finally {
 		return title;
 	}
+}
+
+function run() {
+	return copy_selection_as_markdown_links();
 }
