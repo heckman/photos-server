@@ -77,7 +77,7 @@ function properties(item) {
 
 function as_markdown_link(item) {
 	const props = properties(item);
-	return `[${altText(props)}](${url(props)})`;
+	return `![${altText(props)}](${url(props)})`;
 }
 
 function copy_selection_as_markdown_links() {
