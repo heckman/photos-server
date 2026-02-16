@@ -1,150 +1,293 @@
 # Photos Server
 
-## README IS STALE
-
 Photos Server does three things:
 
-1. Serves media items from the Photos library via HTTP on localhost.
-2. Launches Photos by opening HTTP URLs with a particular pattern.
-3. Copies links to the currently selected items in the Photos application.
+1. Serves media items from the Photos library
+   via HTTP on localhost.
+2. Launches Photos to open HTTP URLs
+   that have a particular prefix.
+3. Copies links to the items currently selected
+   in the Photos application.
 
-For the remainder of this document we will use the term "Photo" to refer to a media item, which can be, in fact, a video.
+For the remainder of this document we will use the term
+"Photo" to refer to a media item, which can be, in fact, a video.
 
 ## Use case
 
-I make notes in markdown documents, stored in a git repository. Rather than storing copies of my photos I want to include with my notes, I use links to URLs that resolve to the items in my Photos library.
+I make notes in markdown documents
+and I want to include photos from my Photos library.
 
-When I select items in the Photos application and press a hotkey combination, links to those items are copied to the clipboard as markdown images.
+I'd rather not export copies of the image files
+to include along side my notes,
+which are stored in a git repository.
+Instead, I use links that resolve directly
+to the media items within the Photos application.
+The following video shows the process:
 
-In the video below, I then open my editor and paste the image links into a markdown document.
-
-When I open the linked url, the Photos application opens, focussed on the image.
+1. In Apple Photos,
+   I select the photos I want to link to
+   and press a key combination,
+   which copies markdown links to the clipboard.
+2. I paste the links into my markdown document,
+   where the addresses of the images
+   point to a port on localhost,
+   where the images are provided by the Photos Server.
+3. When I open one of the links "In the browser"
+   the Photos application opens,
+   focussed on the image.
 
 ![Demo](https://github.com/user-attachments/assets/d4d54ee1-15b2-4621-b701-2c591b1ef237)
-
-The url
 
 ## The three features
 
 ### The server
 
-The server listens on localhost (`127.0.0.1`) on port `6330`—the port number is configurable. On my machine I've made it accessible at http://photos.local, which through some [fancy redirection](#fancy-redirection) accesses the HTTP server at `127.0.0.1:6330`. I will use this hostname throughout this document. It can be replaced with `127.0.0.1:6330`. The server doesn't care how you reach it. It only considers the path portion of the URL.
+By default, Photos Server listens to
+port `6330` on localhost (`127.0.0.1`)
+for incomming HTTP requests.
 
-The Photos library selects a photo based on the contents of the first component of the URL's path, which we call the **_identifier_**. There are two kinds of identifiers: a UUID, and a search query. The Photos Server will try to find the photo using each of these methods in turn.
+> [!TIP] Pretty URLs
+> In the demo video,
+> I access this port via `http://photos.local`,
+> through the use of some
+> [fancy redirection](#fancy-redirection).)
 
-If there is a photo in the library whose UUID matches the first 32 characters of the identifier, that photo will be served. Otherwise, the _identifier_ will be used as a search query, after replacing all plus (`+`) tilde (`~`) and period (`.`) characters with spaces. This search is identical to using the search box within the Photos application.
+The server will use
+the first component of the URL's path,
+which we call the **_identifier_**,
+to locate a media item in the Photos library.
 
-The last component of the url is the **_basename_**. If the photo is downloaded, it's filename will be this _basename_ with the appropriate extension appended. (The last component can also be the first component.)
+First, it will try to use the **_identifier_**
+to specify the media item by its ID,
+which is unique within the libary,
+but which will vary between libraries—on different devices,
+or if the library is not migrated properly.
+
+If the _identifier_ does not match an ID of a media item,
+it is used as a search query, after replacing all
+plus (`+`) tilde (`~`) and period (`.`) characters with spaces.
+This search is identical to using
+the search box within the Photos application.
+
+The last component of the url is the **_basename_**.
+If the photo is downloaded,
+its filename will be formed
+by combining the _basename_ with the appropriate extension.
+If there is only one url component
+it will be used as both the _identifier_ and the _basename_.
+[^TODO_BASENAME_QUERY]
+
+[^TODO_BASENAME_QUERY]:
+    **TO DO**: If the server cannot find
+    a media item by using the _identifier_ as a search query,
+    it should do another search using the _basename_.
 
 ### The "default browser"
 
-If the Photos Server application is set as the default browser in System Settings, it will open matching HTTP URLs with Apple Photos, while forwarding non-matching URLs to a pre-designated application. Opening the Photos Server application will open a [control panel](control-panel) to configure these options. The photo to open will be determined by the **_îdentifier_** in the same fashion as the server: by UUID or matching search query. It doesn't care about the _basename_.
+To enable this function,
+Photos Server must be set as the default browser.
+This is done in the System Settings.
 
-### The link-copier
+As the default browser, Photos Server will open HTTP URLs.
+It will screen them for URLs with a particular
+[origin](https://developer.mozilla.org/en-US/docs/Web/API/URL/origin),
+which it will open with the Photos application,
+focussed on the media item specified by the URL.
+URLs that don't match the prefix
+will be forwarded to a pre-designated application.
 
-This action is triggered by calling a command included in the Photos Server application bundle. (The command is written in JXA (javascript for automation) and its code can also be copied to be used elsewhere.) When the command is executed a markdown link will be copied for each photo selected in the Photos application.
+The origin can be set to any valid origin with the `http:` scheme,
+its default value is `http://localhost:6330`.
+This origin will also be used
+when copying links in the Photos Application.
 
-The copier will try and identify the photo by date and partial filename. If such a search results in only one match, then it will be used as the identifier. (It will also try one day in either direction to compensate for time-zone complications.) This will usually be the case. The photo in the demo video, which can be accessed at `http://photos.local/31F5FDDB-26D6-4EF6-A9E7-4A636F6E6EE2`, will be copied as `http://photos.local/2025-11-15.8903`. (The original filename is` IMG_8903.HEIC`.)
+### The link copier
 
-If the search for the date and partial file-name returns with multiple (or somehow no) results, then the URL returned will use the UUID of the photo as the _identifier_, while still including the date and partial filename as the _basename_. It will look something like: `http://photos.local/31F5FDDB-26D6-4EF6-A9E7-4A636F6E6EE2/2025-11-15.8903`.
+This feature is made available as a JXA script libary
+included in the Photos Server application bundle at
+`Photos Server.app/Contents/Resources/Script Libraries/Photos Links.scptd`.
+Creating a symbolic link in the
+`~/Library/Script\ Libraries/` folder
+pointing to this file will make the library
+available within JXA scripts with the Library function.
 
-The copier copies links in mardown format, which included ALT text. The copier tired to come up with alt text based on the photos metadata, looking at its title, caption, keywords, and filename. The complete link copied for the example photo is `![Lola](http://photos.local/2025-11-15.8903)`.
+The function `copy_selection_as_markdown_links`
+[^TODO_RENAME_FUNCTIONS]
+will generate a URL for each media item
+selected in the Photos application
+that will resolve to that item
+when opened by the default browser
+or when requested from the Photos server.
 
-## The control panel
+[^TODO_RENAME_FUNCTIONS]:
+    **TO DO**: Rename the script library
+    functions using conventional capitalization.
 
-Opening the Photos Server opens the control panel. It provides the following functions:
+This funciton will attempt to generate links
+with unique identifiers based on the media item's date and filename.
+If the attempted identifier does not resolve to a unique media item,
+it will be prepended with the item's ID as the first URL component.
 
-### Start/Restart the server
+Alt-text will be generated from first
+non-blank value found in the media item's
+title, caption, keywords, or filename.
 
-This provides the opportunity to change the port the server is listening on. When starting the server a file is written to `~/Library/LaunchAgents/` that will restart the server when the system reboots.
+## Settings & server control
 
-### Remove the server
+The server can be controlled, and setting can be changed,
+with a command-line utility located at
+`Photos Server.app/Contents/Resources/Scripts/serverctl`.
 
-This will stop the server and remove the launch agent from the user's `~/Library`. It will remain uninstalled on reboot.
+One of the utility's commands is `dialog`
+which provides some rudimentary dialog boxes
+to access its functionaliry with a graphic interface.
+This graphic interface can also be launced by double-clicking
+on the Photos Server application.
 
-### Set the prefix for URLs to open in Photos
+There are three settings:
 
-The prefix should be an **_authority_**: the combination of hostname (or IP address) and optional port number (if not 80, which is implied). This value will be used in two places.
+- **port** Restarting the server in the graphical interface
+  will prompt for a port number.
+  It can be set without restarting from the command line utility,
+  in which case it will take effect on the next (re)start.
+- **origin** URLs generated by the link copier will begin with this
+  [origin](https://developer.mozilla.org/en-US/docs/Web/API/URL/origin),
+  and, when Photos Server is the default browser,
+  URLs with this origin will be opened by the Photos application
+  while the remainder will be forwarded to
+  the pre-set preferred browser.
+- **browser** The application to open URLs that don't begin with
+  _origin_.
 
-1. When links are copied, they will be in the form http://**_authority/basename_** or http://**_authority/UUID/basename_**.
-2. When Photos Server is the default browser, opening a URL beginning with http://**_authority_**/ will open Apple Photos, with the identified photo selected in the "view" mode.
-
-If you are not using fancy redirection, you'll want this to be "localhost:**_port_**", where _port_ is the same as the value set when starting/restarting the server. With [fancy redirection](#fancy-redirection), this doesn't have to be the case. For example, I use port `6330` and `photos.local` as the authority.
-
-### Set the preferred browser
-
-When Photos Server is the default browser, URLs that do not begin with http://**_authority_**/ will open with this preferred browser.
-
-### Funny behaviour
-
-The UI of the control panel is somewhat limited because it restricts itself to using native JXA UI elements. This also comes with a particular side-effect: when Photos Server is the default browser, and its control panel is open, opening any HTTP will activate the control panel, and the link will not open in either Photos or the preferred browser.
+The other commands control the server, or obtain information about it.
+For more information, refer to help text of the command-line utility
+with `serverctl --help`, or refer to its source code at
+`src/resources/Scripts/serverctl`.
 
 ## Installation
 
 ### Dependencies
 
-- The installation scripts require **_jq_** and a recent-ish version of **_bash_**. Both are available via [homebrew](https://brew.sh).
+- The installation scripts require **_jq_** and
+  a recent-ish version of **_bash_**.
+  Both are available via [homebrew](https://brew.sh).
 
-- I don't think **_Xcode_** is required, but it might be required for some of the icon generation—I don't really know. Please let me know if you run into an Xcode dependency, or any other surprise dependencies.
+- I don't think **_Xcode_** is required, but I can't be sure.
+  Please let me know if you run into an Xcode dependency,
+  or any other surprise dependencies for that matter.
 
 ### Build process
 
-I wrote a script to bundle a JXA script into an application bundle. When executed from the root of the repository this create the Photos Server application in the `dist` directory:
+I wrote a script to bundle a JXA script into an application bundle.
+From the repository root it can be used like this
+to create the Photos Server application in the `dist` directory:
 
 ```shell
-scripts/osabundle src/photosServer.json
+scripts/osabundle src/photosServer.json dist/Photos\ Server.app
 ```
 
-Once built it needs to be moved to the Applications folder to work correctly.
+Once built it needs to be moved to
+the Applications folder to work correctly.
+
+During development, I make frequent use of
+`scripts/rebuild-and-reinstall-and-open`.
 
 ### Uninstallation cruft
 
-Photos Server will listen for incoming connections by creating a launch agent at `~/Library/LaunchAgents/ca.heckman.path.plist`. This file can be removed from the control panel, but it will not be automatically removed when the Photos Server application is deleted. Photos Server also creates small file to store its settings at `~/Library/Preferences/ca.heckman.PhotosServer.plist` which will also be left behind.
+Starting the server will create a launch agent at
+`~/Library/LaunchAgents/ca.heckman.path.plist`.
+Stopping the server removes it.
+If the Photos Server application is removed
+without stopping the server it will remain.
+The Photos Server application creates another file
+to save its settings at
+`~/Library/Preferences/ca.heckman.PhotosServer.plist`,
+which is never removed.
 
 ### The log
 
-The latest version uses the system log for the part of the application that handles http requests and opens urls. The following command filters the system log stream for the handler, piping it to awk to filter out less interesting content.
+The `handler` script,
+which handles both opening URLs beggining with _origin_
+as well as HTTP requests, logs to the system log.
+Its entries can be filtered with the predicate
+`process == "logger" AND composedMessage CONTAINS "ca.heckman.PhotoServer.handler"`
 
-```shell
-log stream --debug --predicate 'process == "logger" AND composedMessage CONTAINS "ca.heckman.PhotoServer.handler"' | awk 'NR>2{printf("%s %-8s%s\n",substr($2,1,12),$4,substr($0,index($0,"[ca.heckman.PhotoServer.handler]")+32))}'
-```
+There is a script in the repo in the `scripts` directory
+that will stream the log, lightly formatted, for debugging.
 
 ## Fancy redirection
 
 > [!WARNING]
-> It's probably not a good idea to trust my instructions. It is not my fault if you do and things go poorly. Check other sources. It requires root access and can do damage. Be careful.
+> It's probably not a good idea to trust my instructions.
+> It is not my fault if you do and things go poorly.
+> Check other sources.
+> It requires root access and can do damage.
+> Be careful.
 
-This section describes how I have configured http://photos.local to connect to http://127.0.0.1:6330.
+This section describes how I have configured my machine
+to make requests to http://photos.local
+connect to the server listening on http://127.0.0.1:6330.
 
-I've automated this process in a script at `script/danger`. I use it for development but it's a bad idea to use it blindly because it has the potential to do serious damage to your system. Reading its source, however, may help with the process.
+I've automated this process in a script at `script/danger`.
+I use it for development but it's a bad idea to use it blindly
+because it has the potential to do serious damage to your system.
+Reading its source, however, may help with the process.
 
-The redirection is accomplished in two steps, both requiring root access.
+The redirection is accomplished in two steps,
+both requiring root access.
 
 ### Forward port 80 on another loopback device
 
-This will let us use an address without specifying a port. Ports below `1024` are restricted, but we can redirect port `80` on `127.6.6.3` (or another loopback address) to `127.0.0.1:6330`. We will also redirect port `80` on `fd00::6630` to port `6330` on `::1`. This can be done by creating a launch daemon that uses `pfctl` to perform the port forwarding.
+This will let us use an address without specifying a port.
+Ports below `1024` are restricted,
+but we can redirect port `80` on `127.6.6.3`
+(or some other loopback address)
+to `127.0.0.1:6330`.
+We will also redirect port `80` on `fd00::6630`
+to port `6330` on `::1`.
+This can be done by creating a launch daemon
+that uses `pfctl` to perform the port forwarding.
 
-The only safe use of the _danger_ script is `script/danger plist` which will print the plist for a launch daemon that will perform the port forwarding. It can be used as a model, or saved as it is to `/Library/LaunchDaemons/ca.heckman.PhotosServer.port-forwarding.plist`.
+The only safe use of the _danger_ script is `script/danger plist`
+which will print the plist for a launch daemon
+that will perform the port forwarding.
+It can be used as a model, or copied to a file at
+`/Library/LaunchDaemons/ca.heckman.PhotosServer.port-forwarding.plist`.
 
 ### Add a hostname to /etc/hosts
 
-This file defines ip addresses for specific host names. Adding the following line is enough:
+This file `/etc/hosts` defines ip addresses for specific host names. Adding the following lines will do what we need:
 
 ```
 127.6.3.3       photos.local
 fd00::6630      photos.local
 ```
 
-This will cause the system to resolve `photos.local` to `127.6.3.3` (or `fd00::6330)`.
+This will cause the system to resolve `photos.local`
+to `127.6.3.3` (or `fd00::6330)` with IPv6).
 
-I highly recommend using a name ending in `.local` because Photos Server only servers HTTP (not HTTPS) and many browsers (an my markdown editor) will not let you connect to most hosts without HTTPS, hosts ending with `.local` are an exception to this rule. The only catch with this TLD is that if you don't include the ip6 address, the system will take 5 seconds before resolving to the ip4 address while the Bonjour service tries to locate `photos.local`.
+I highly recommend using a name ending in `.local`
+because Photos Server only servers HTTP (not HTTPS)
+and many browsers (an my markdown editor
+will not let you connect to most hosts without HTTPS.
+Hosts ending with `.local` are an exception to this rule.
+The only catch with this TLD is that
+if you don't include the IPv6 address,
+the system will take about 5 seconds
+before resolving to the IPv4 address
+while the Bonjour service tries to locate `photos.local` via IPv6
 
-With the port-forwarding described earlier in place, adn this addition to `/etc/hosts/`, requests to this `photos.local:80` will be forwarded to `127.0.0.1:6330` where they will be served by the Photos Server application.
+With the port-forwarding described earlier in place,
+and with this addition to `/etc/hosts/`,
+requests to `photos.local:80` will be forwarded to `127.0.0.1:6330`
+where they will be served by the Photos Server application.
 
 ## License
 
 This project is shared under the GNU v3.0 General Public License,
-except for the two SVG icons whose copyrights are not held by me:
+except for the two SVG icons used for reponses to
+unsuccessful HTTP requests,
+whose copyrights are held by other people::
 
 - The 'broken image' icon was created for Netscape Navigator
   by Marsh Chamberlin (<https://dataglyph.com>).
@@ -153,4 +296,4 @@ except for the two SVG icons whose copyrights are not held by me:
 
 - The 'sad mac' icon was created for Apple Inc.
   by Susan Kare (<https://kareprints.com>).
-  I hand-crafted the SVG which is embedded in the source code for the response handler.
+
