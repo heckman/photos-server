@@ -6,16 +6,16 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)" || exit 1
 
 # remove any existing builds
-rm -rf dist/Photos\ Server.app
+rm -rf "dist/Photos Server.app"
 
 # this builds and signs the bundle
-osabundle src/photosServer.json
+osabundle "src/photosServer.json" "dist/Photos Server.app"
 
 # remove any existing install
 rm -rf "/Applications/Photos Server.app"
 
 # install
-mv dist/Photos\ Server.app /Applications
+mv "dist/Photos Server.app" "/Applications"
 
 # open
-open -a Photos\ Server
+open -a "Photos Server"
