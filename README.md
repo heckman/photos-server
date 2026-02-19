@@ -217,12 +217,14 @@ that will stream the log, lightly formatted, for debugging.
 
 ## Issues
 
-Currently, when opening more than one webloc file that
-should be forwarded to the pre-selected browser,
-only one of them is suscessfully opened.
-
-This problem is not easy to solve with JXA scripts,
-and I don't feel up to rewriting it in Swift.
+There was an issue with opening multiple webloc files at once,
+with the pre-selected browser to handle non-matching URLs.
+Only one of them would be opened.
+The JXA was using an Objective-C bridge function
+to handle forwarding the opening, and I've replaced
+it with a call to running `open -a` in a shell command,
+which seems to be working,
+but I don't know if it is stable.
 
 I've found an application that, when it is set as the default browser,
 can set up rules that decide which browser is opened for each URL.

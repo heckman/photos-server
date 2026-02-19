@@ -21,11 +21,15 @@ function run() {
 function GURLGURL(url) {
 	return url.startsWith(config.get("origin"))
 		? exitedCleanly(tasks.urlHandler(url))
-		: openNsUrlsWithAppBundleIdentifier(
-				$([$.NSURL.URLWithString(url)]),
-				bundleIdentifierForApp(config.get("browser")),
+		: app.doShellScript(
+				`open -a "${config.get("browser")}" "${url}"`,
 			);
+	// : openNsUrlsWithAppBundleIdentifier(
+	// 		$([$.NSURL.URLWithString(url)]),
+	// 		bundleIdentifierForApp(config.get("browser")),
+	// 	);
 }
+
 function openDocuments(files) {
 	return openNsUrlsWithAppBundleIdentifier(
 		$(
