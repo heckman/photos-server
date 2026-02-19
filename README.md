@@ -215,6 +215,22 @@ Its entries can be filtered with the predicate
 There is a script in the repo in the `scripts` directory
 that will stream the log, lightly formatted, for debugging.
 
+## Issues
+
+Currently, when opening more than one webloc file that
+should be forwarded to the pre-selected browser,
+only one of them is suscessfully opened.
+
+This problem is not easy to solve with JXA scripts,
+and I don't feel up to rewriting it in Swift.
+
+I've found an application that, when it is set as the default browser,
+can set up rules that decide which browser is opened for each URL.
+It is called [finicky](https://github.com/johnste/finicky).
+I haven't tried it yet.
+I'm hoping I can offload the role of delegating URL-opening,
+and have Photos Server open every URL sent to it.
+
 ## Fancy redirection
 
 > [!WARNING]
@@ -296,4 +312,3 @@ whose copyrights are held by other people::
 
 - The 'sad mac' icon was created for Apple Inc.
   by Susan Kare (<https://kareprints.com>).
-
